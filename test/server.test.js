@@ -434,9 +434,12 @@ describe('roulette end to end', () => {
       assert.equal(spin.payload.number, 17);
 
       const celebrate = await beto.waitFor('celebrate');
-      assert.deepEqual(celebrate, { t: 'celebrate', kind: 'level', level: 1, title: 'Aprendices', bonus: 250, profit: 3460 });
+      const { bonuses, mvp, ...headline } = celebrate;
+      assert.deepEqual(headline, { t: 'celebrate', kind: 'level', level: 1, title: 'Aprendices', bonus: 250, profit: 3460 });
+      assert.equal(mvp.name, 'Ana');
+      assert.deepEqual(Object.values(bonuses).sort((a, b) => a - b), [100, 400]);
       const room = beto.room;
-      assert.deepEqual(room.players.map((player) => player.balance), [900 + 3600 + 250, 960 + 250]);
+      assert.deepEqual(room.players.map((player) => player.balance), [900 + 3600 + 400, 960 + 100]);
       assert.equal(room.goal.level, 1);
       assert.equal(room.goal.profit, 3460);
       const kinds = room.feed.map((entry) => entry.kind);

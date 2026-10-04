@@ -24,6 +24,9 @@ const cryptoRng = require('./rng');
 const { loadGames } = require('./games');
 const { Room, generateRoomCode, normalizeRoomCode } = require('./rooms');
 const { sanitizeName, sanitizeChat, newToken, newPlayerId, isPlainObject, TOKEN_PATTERN } = require('./util');
+const saves = require('./saves');
+const economy = require('./economy');
+const { createProfile, restoreProfile, sanitizeLook, persistView } = require('./profile');
 
 const DEFAULT_NAME = 'Invitado';
 const ACTION_TYPE_MAX = 40;
@@ -150,6 +153,7 @@ class Hub {
   /** Destroy every room (cancelling all timers). The hub is unusable afterwards. */
   close() {
     this._closed = true;
+    for (const session of this.sessions.values()) this._cancelSave(session);
     for (const room of [...this.rooms.values()]) room.destroy();
     this.rooms.clear();
     this.sessions.clear();
@@ -254,24 +258,88 @@ class Hub {
 
   // ───────────────────────────── sessions ─────────────────────────────
 
-  _createSession() {
+  /** @param {object} [profile] a profile restored from a save; a fresh one is created otherwise */
+  _createSession(profile) {
     let token = newToken();
     while (this.sessions.has(token)) token = newToken();
-    let id = newPlayerId();
-    while (this.sessionsById.has(id)) id = newPlayerId();
+    let id = profile ? profile.id : newPlayerId();
+    while (!profile && this.sessionsById.has(id)) id = newPlayerId();
+    const avatar = profile ? profile.avatar : crypto.randomInt(0, this.config.AVATARS);
     const session = {
       token,
       id,
-      name: DEFAULT_NAME,
-      avatar: crypto.randomInt(0, this.config.AVATARS),
+      name: profile ? profile.name : DEFAULT_NAME,
+      avatar,
+      profile: profile || createProfile({ id, name: DEFAULT_NAME, avatar, balance: this.config.START_BALANCE }),
       roomCode: null,
       conn: null,
       seenAt: this.clock.now(),
       chatTimes: [],
+      saveTimer: null,
+      savedJson: null,
     };
     this.sessions.set(token, session);
     this.sessionsById.set(id, session);
     return session;
+  }
+
+  // ───────────────────────────── saves ─────────────────────────────
+
+  /** The signed save of a session as of right now (chips at stake count as returned). */
+  _packSave(session) {
+    const room = this._roomOf(session);
+    const view = persistView(session.profile, room ? room.stakeOf(session.id) : 0);
+    session.savedJson = JSON.stringify(view);
+    session.profile.seq += 1;
+    return saves.pack({ ...view, seq: session.profile.seq });
+  }
+
+  /** Send the save if the profile changed since the last one. */
+  _sendSave(session) {
+    if (!session.conn) return;
+    const room = this._roomOf(session);
+    const json = JSON.stringify(persistView(session.profile, room ? room.stakeOf(session.id) : 0));
+    if (json === session.savedJson) return;
+    session.conn.send({ t: 'save', save: this._packSave(session) });
+  }
+
+  /** Coalesce saves: at most one per SAVE_INTERVAL_MS and session. */
+  _scheduleSave(session) {
+    const interval = this.config.SAVE_INTERVAL_MS;
+    if (!interval || session.saveTimer || this._closed) return;
+    session.saveTimer = this.clock.setTimeout(() => {
+      session.saveTimer = null;
+      this._sendSave(session);
+    }, interval);
+    if (session.saveTimer && typeof session.saveTimer.unref === 'function') session.saveTimer.unref();
+  }
+
+  _cancelSave(session) {
+    if (!session.saveTimer) return;
+    this.clock.clearTimeout(session.saveTimer);
+    session.saveTimer = null;
+  }
+
+  /** What a player sees of the own profile outside a room. */
+  _profileView(session) {
+    const profile = session.profile;
+    const level = economy.levelFor(profile.stats.wagered);
+    return {
+      balance: profile.balance,
+      peak: profile.peak,
+      debt: profile.debt,
+      level,
+      rank: economy.rankFor(level),
+      title: profile.title ? (economy.ITEMS.get(profile.title) || {}).name || null : null,
+      look: profile.look,
+      owned: profile.owned,
+      theme: profile.theme,
+      stats: { ...profile.stats },
+    };
+  }
+
+  _identity(session) {
+    return { id: session.id, name: session.name, avatar: session.avatar, profile: session.profile };
   }
 
   /** Forget identities that are offline, in no live room and idle for SESSION_TTL_MS. */
@@ -282,6 +350,7 @@ class Hub {
     for (const session of [...this.sessions.values()]) {
       if (session.conn || this._roomOf(session)) continue;
       if (now - session.seenAt < this.config.SESSION_TTL_MS) continue;
+      this._cancelSave(session);
       this.sessions.delete(session.token);
       this.sessionsById.delete(session.id);
     }
@@ -336,6 +405,13 @@ class Hub {
           }
         }
       },
+      onFlushed: (flushed) => {
+        for (const [id, player] of flushed.players) {
+          if (!player.present || !player.conn) continue;
+          const session = this.sessionsById.get(id);
+          if (session) this._scheduleSave(session);
+        }
+      },
       onMemberDropped: (from, id) => {
         const session = this.sessionsById.get(id);
         if (session && session.roomCode === from.code) {
@@ -359,6 +435,11 @@ class Hub {
     if (typeof msg.token === 'string' && TOKEN_PATTERN.test(msg.token)) {
       session = this.sessions.get(msg.token) || null;
     }
+    if (!session && typeof msg.save === 'string') {
+      const profile = restoreProfile(saves.unpack(msg.save), this.config);
+      // The same identity may still be alive in memory (another tab, a lost token): memory wins over the save.
+      if (profile) session = this.sessionsById.get(profile.id) || this._createSession(profile);
+    }
     if (session) {
       const previous = session.conn;
       if (previous && previous !== conn) {
@@ -375,6 +456,8 @@ class Hub {
     const name = sanitizeName(msg.name, this.config.NAME_MAX_LENGTH);
     if (name) session.name = name;
     if (this._isAvatar(msg.avatar)) session.avatar = msg.avatar;
+    session.profile.name = session.name;
+    session.profile.avatar = session.avatar;
     session.conn = conn;
     session.seenAt = this.clock.now();
     conn.session = session;
@@ -390,6 +473,9 @@ class Hub {
       token: session.token,
       serverNow: this.clock.now(),
       games: this.registry.list,
+      catalog: economy.catalogView(),
+      profile: this._profileView(session),
+      save: this._packSave(session),
       room: room ? room.snapshot(session.id) : null,
     });
     if (room) room.pushView(session.id);
@@ -412,9 +498,12 @@ class Hub {
     }
     session.name = name;
     session.avatar = avatar;
+    session.profile.name = name;
+    session.profile.avatar = avatar;
     const room = this._roomOf(session);
     if (room) room.setProfile(session.id, name, avatar);
-    conn.send({ t: 'you', you: this._you(session) });
+    conn.send({ t: 'you', you: this._you(session), profile: this._profileView(session) });
+    this._scheduleSave(session);
   }
 
   _createRoom(conn, msg, session) {
@@ -425,7 +514,7 @@ class Hub {
     }
     const room = this._openRoom();
     try {
-      room.join(this._you(session), conn);
+      room.join(this._identity(session), conn);
     } catch (err) {
       room.destroy();
       throw err;
@@ -452,7 +541,7 @@ class Hub {
       session.roomCode = null;
       conn.send({ t: 'left' });
     }
-    room.join(this._you(session), conn);
+    room.join(this._identity(session), conn);
     session.roomCode = room.code;
   }
 
@@ -541,6 +630,44 @@ class Hub {
     this._requireRoom(session).emote(session.id, msg.emote);
   }
 
+  /** Change the avatar: free parts and owned accessories (works inside and outside a room). */
+  _look(conn, msg, session) {
+    const look = sanitizeLook(msg.look, session.profile.owned);
+    if (msg.avatar !== undefined) {
+      if (!this._isAvatar(msg.avatar)) throw new ClubError('Elegí uno de los colores disponibles.', 'bad_avatar');
+      session.avatar = msg.avatar;
+      session.profile.avatar = msg.avatar;
+    }
+    session.profile.look = look;
+    const room = this._roomOf(session);
+    if (room) {
+      room.setProfile(session.id, session.name, session.avatar);
+      room.touch();
+    }
+    conn.send({ t: 'you', you: this._you(session), profile: this._profileView(session) });
+    this._scheduleSave(session);
+  }
+
+  _throw(conn, msg, session) {
+    this._requireRoom(session).throwItem(session.id, msg.to, msg.item);
+  }
+
+  _rain(conn, msg, session) {
+    this._requireRoom(session).rain(session.id);
+  }
+
+  _tip(conn, msg, session) {
+    this._requireRoom(session).tip(session.id, msg.amount);
+  }
+
+  _repayFor(conn, msg, session) {
+    this._requireRoom(session).repayFor(session.id, msg.to, msg.amount);
+  }
+
+  _profileOf(conn, msg, session) {
+    conn.send({ t: 'profileOf', player: this._requireRoom(session).profileOf(session.id, msg.id) });
+  }
+
   _ping(conn, msg) {
     const c = msg.c;
     const echo =
@@ -567,6 +694,12 @@ const HANDLERS = new Map([
   ['buy', Hub.prototype._buy],
   ['equip', Hub.prototype._equip],
   ['emote', Hub.prototype._emote],
+  ['look', Hub.prototype._look],
+  ['throw', Hub.prototype._throw],
+  ['rain', Hub.prototype._rain],
+  ['tip', Hub.prototype._tip],
+  ['repayFor', Hub.prototype._repayFor],
+  ['profileOf', Hub.prototype._profileOf],
   ['ping', Hub.prototype._ping],
 ]);
 

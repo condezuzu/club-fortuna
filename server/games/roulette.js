@@ -45,6 +45,7 @@
  */
 
 const { formatChips } = require('../util');
+const { defineGame } = require('./_define');
 
 const meta = {
   id: 'roulette',
@@ -176,7 +177,7 @@ function payoutOf(spot, amount, number) {
   return spot.numbers.includes(number) ? amount * (spot.payout + 1) : 0;
 }
 
-function create(ctx) {
+function createWith(meta, ctx) {
   let phase = 'idle';
   let round = 1;
   let startedAt = null; // server epoch ms when the current phase began
@@ -517,9 +518,7 @@ function create(ctx) {
   };
 }
 
-module.exports = {
-  meta,
-  create,
+module.exports = defineGame(meta, createWith, {
   // Exposed for tests and tooling; not part of the plugin contract.
   internals: { SPOTS, PAYOUTS, TIMING, WHEEL, RED_NUMBERS, HISTORY_SIZE, colorOf, findSpot, payoutOf },
-};
+});

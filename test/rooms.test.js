@@ -33,7 +33,7 @@ test('hello: welcome carries identity, a 128-bit token, the clock and the games'
   const club = createTestHub();
   const ana = club.client({ name: 'Ana', avatar: 7 });
   const welcome = ana.last('welcome');
-  assert.deepEqual(Object.keys(welcome).sort(), ['games', 'room', 'serverNow', 't', 'token', 'you']);
+  assert.deepEqual(Object.keys(welcome).sort(), ['catalog', 'games', 'profile', 'room', 'save', 'serverNow', 't', 'token', 'you']);
   assert.match(welcome.token, /^[0-9a-f]{32}$/);
   assert.deepEqual(welcome.you, { id: welcome.you.id, name: 'Ana', avatar: 7 });
   assert.equal(typeof welcome.you.id, 'string');
@@ -133,6 +133,9 @@ test('createRoom: code, snapshot shape and starting balance', () => {
       rank: 'Novato',
       title: null,
       vip: false,
+      look: { skin: 0, hair: 0, hairColor: 0, pants: 0, hat: 'none', glasses: 'none', neck: 'none', pet: 'none', aura: 'none' },
+      net: 0,
+      peak: 1000,
     },
   ]);
   assert.deepEqual(room.tables, { vault: { seated: [] }, mint: { seated: [] } });
@@ -643,7 +646,16 @@ test('level-up: celebration, feed line and a bonus that leaves the profit untouc
 
   for (const client of [ana, beto]) client.clear();
   act(ana, { type: 'win', amount: 1 });
-  const expectedCelebration = { t: 'celebrate', kind: 'level', level: 1, title: 'Aprendices', bonus: 250, profit: 2500 };
+  const expectedCelebration = {
+    t: 'celebrate',
+    kind: 'level',
+    level: 1,
+    title: 'Aprendices',
+    bonus: 250,
+    bonuses: { [ana.you.id]: 400, [beto.you.id]: 100 },
+    mvp: { id: ana.you.id, name: 'Ana', net: 2500 },
+    profit: 2500,
+  };
   assert.deepEqual(ana.last('celebrate'), expectedCelebration);
   assert.deepEqual(beto.last('celebrate'), expectedCelebration, 'the whole room celebrates, seated or not');
   assert.deepEqual(ana.messages.map((message) => message.t), ['room', 'game', 'celebrate']);
@@ -657,11 +669,11 @@ test('level-up: celebration, feed line and a bonus that leaves the profit untouc
     prevTarget: 2500,
     nextTitle: 'Apostadores',
   });
-  assert.equal(ana.me().balance, 1000 + 2500 + 250);
-  assert.equal(beto.me().balance, 1000 + 250);
+  assert.equal(ana.me().balance, 1000 + 2500 + 400);
+  assert.equal(beto.me().balance, 1000 + 100);
   const line = room.feed.find((entry) => entry.kind === 'level');
-  assert.equal(line.text, '¡Nivel 1: Aprendices! Bono de 250 fichas para cada uno');
-  assert.equal(line.amount, 250);
+  assert.equal(line.text, '¡Cuota 1 cumplida! Figura: Ana. El bono se repartió según el aporte de cada uno');
+  assert.equal(line.amount, 500);
 
   // The bonus is a buy-in: it must not push the team towards the next level.
   act(ana, { type: 'win', amount: 4999 });
@@ -698,17 +710,22 @@ test('jumping several levels at once: one celebration, every bonus paid', () => 
   ana.send({ t: 'sit', game: 'mint' });
   act(ana, { type: 'win', amount: 20000 });
   assert.deepEqual(ana.all('celebrate'), [
-    { t: 'celebrate', kind: 'level', level: 3, title: 'Tiburones', bonus: 3000, profit: 20000 },
+    {
+      t: 'celebrate',
+      kind: 'level',
+      level: 3,
+      title: 'Tiburones',
+      bonus: 3000,
+      bonuses: { [ana.you.id]: 4800, [beto.you.id]: 1200 },
+      mvp: { id: ana.you.id, name: 'Ana', net: 20000 },
+      profit: 20000,
+    },
   ]);
-  assert.equal(beto.me().balance, 1000 + 250 + 750 + 2000);
+  assert.equal(beto.me().balance, 1000 + 1200);
   assert.equal(ana.room().goal.profit, 20000);
   assert.deepEqual(
     ana.room().feed.filter((entry) => entry.kind === 'level').map((entry) => entry.text),
-    [
-      '¡Nivel 1: Aprendices! Bono de 250 fichas para cada uno',
-      '¡Nivel 2: Apostadores! Bono de 750 fichas para cada uno',
-      '¡Nivel 3: Tiburones! Bono de 2.000 fichas para cada uno',
-    ]
+    ['¡Cuota 3 cumplida! Figura: Ana. El bono se repartió según el aporte de cada uno']
   );
 });
 
@@ -725,13 +742,13 @@ test('bonus accounting: profit is invariant under level bonuses, gifts and rescu
   ana.send({ t: 'gift', to: beto.you.id, amount: 1234 });
   assert.equal(ana.room().goal.profit, house);
   play(beto, 'lose', 2000);
-  play(caro, 'lose', 1250);
+  play(caro, 'lose', 1100); // 1000 + her 100 share of the first bonus
   caro.send({ t: 'rescue' });
   assert.equal(caro.me().balance, 500);
   assert.equal(ana.room().goal.profit, house);
-  play(caro, 'win', 9000); // level 2 (profit 8750)
+  play(caro, 'win', 9000); // level 2 (profit 8900)
   assert.equal(ana.room().goal.level, 2);
-  assert.equal(house, 8750);
+  assert.equal(house, 8900);
   // chips in play = buy-ins (3 x 1000) + rescue + bonuses (3 x (250 + 750)) + what the house paid
   assert.equal(totalBalance(ana.room()), 3000 + 500 + 3000 + house);
 });

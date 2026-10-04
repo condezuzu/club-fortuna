@@ -1,6 +1,7 @@
+// Ruleta — client plugin.
+import { createWheel } from '../wheel.js';
 import { createDealer } from '../dealer.js';
 
-// Ruleta — client plugin (simple version: number ticker instead of an animated wheel).
 const RED = new Set([1, 3, 5, 7, 9, 12, 14, 16, 18, 19, 21, 23, 25, 27, 30, 32, 34, 36]);
 const colorOf = (n) => (n === 0 ? 'green' : RED.has(n) ? 'red' : 'black');
 const PHASE_TEXT = { idle: 'Hagan sus apuestas', betting: 'Hagan sus apuestas', spinning: 'No va más…', result: 'Resultado' };
@@ -8,12 +9,17 @@ const PHASE_TEXT = { idle: 'Hagan sus apuestas', betting: 'Hagan sus apuestas', 
 export default {
   id: 'roulette',
   icon: 'star',
+  art() {
+    const wheel = createWheel({});
+    wheel.settle(17);
+    return wheel;
+  },
   mount(root, api) {
-    const { el, clear, formatChips, createButton } = api.ui;
-    let state = null;
-    let ticker = null;
-    let tickedRound = null;
+    const { el, clear, formatChips, formatCompact, createButton, createChip } = api.ui;
     const dealer = createDealer(api);
+    const values = api.meta.chips || [5, 25, 100, 500];
+    let state = null;
+    let spunRound = null;
 
     const phaseEl = el('div', { class: 'rl__phase' });
     const timeEl = el('div', { class: 'rl__time' });
@@ -22,6 +28,21 @@ export default {
     const teamEl = el('div', { class: 'rl__team' });
     const board = el('div', { class: 'rl__board' });
     const spots = new Map();
+    const shown = new Map();
+
+    function showNumber(n, final) {
+      const none = n === null || n === undefined;
+      numEl.textContent = none ? '–' : String(n);
+      numEl.className = `rl__number${none ? '' : ` rl__number--${colorOf(n)}`}${final ? ' is-final' : ''}`;
+    }
+
+    const wheel = createWheel({
+      onTick: () => api.audio.play('tick'),
+      onLand: (n) => {
+        showNumber(n, true);
+        api.audio.play('flip');
+      },
+    });
 
     function addSpot(id, label, cls, style) {
       const chips = el('span', { class: 'rl__chips' });
@@ -31,7 +52,10 @@ export default {
           class: `rl__spot ${cls || ''}`,
           type: 'button',
           style,
-          onClick: () => api.send({ type: 'bet', spot: id, amount: tray.value }),
+          onClick: () => {
+            api.fx.bet(tray, btn, tray.value);
+            api.send({ type: 'bet', spot: id, amount: tray.value });
+          },
         },
         el('span', { class: 'rl__label' }, label),
         chips
@@ -64,7 +88,7 @@ export default {
       addSpot(id, label, `rl__spot--out ${cls}`, { gridColumn: `${2 + i * 2} / span 2`, gridRow: '5' });
     });
 
-    const tray = api.ui.createChipTray({ values: [5, 25, 100, 500], value: 25, onChange() {}, getBalance: () => api.me().balance });
+    const tray = api.ui.createChipTray({ values, value: values[1], onChange() {}, getBalance: () => api.me().balance });
     const undoBtn = createButton('Deshacer', { variant: 'ghost', size: 'sm', icon: 'undo', onClick: () => api.send({ type: 'undo' }) });
     const clearBtn = createButton('Limpiar', { variant: 'ghost', size: 'sm', icon: 'trash', onClick: () => api.send({ type: 'clear' }) });
     const rebetBtn = createButton('Repetir', { variant: 'secondary', size: 'sm', icon: 'repeat', onClick: () => api.send({ type: 'rebet' }) });
@@ -78,71 +102,57 @@ export default {
       el(
         'div',
         { class: 'rl' },
-        dealer,
-        el('div', { class: 'rl__top felt' }, el('div', { class: 'rl__status' }, phaseEl, timeEl), numEl, histEl),
-        el('div', { class: 'rl__scroll' }, board),
-        el('div', { class: 'rl__controls' }, tray, undoBtn, clearBtn, rebetBtn, totalEl, readyBtn),
-        teamEl
+        el(
+          'div',
+          { class: 'rl__stage felt' },
+          el('div', { class: 'rl__wheel' }, wheel, numEl),
+          el('div', { class: 'rl__info' }, phaseEl, timeEl, histEl, teamEl)
+        ),
+        el('div', { class: 'rl__play' }, el('div', { class: 'rl__scroll' }, board), el('div', { class: 'rl__controls' }, tray, undoBtn, clearBtn, rebetBtn, totalEl, readyBtn))
       )
     );
 
-    function showNumber(n, final) {
-      numEl.textContent = n === null || n === undefined ? '–' : String(n);
-      numEl.className = `rl__number${n === null || n === undefined ? '' : ` rl__number--${colorOf(n)}`}${final ? ' is-final' : ''}`;
-    }
-
-    function stopTicker() {
-      if (ticker) clearTimeout(ticker);
-      ticker = null;
-    }
-
-    function startTicker(endAt, final) {
-      stopTicker();
-      const tick = () => {
-        const left = endAt - api.serverNow();
-        if (left <= 300) {
-          ticker = null;
-          showNumber(final, true);
-          api.audio.play('flip');
-          return;
-        }
-        showNumber(Math.floor(Math.random() * 37), false);
-        api.audio.play('tick');
-        ticker = setTimeout(tick, left > 5000 ? 70 : left > 2500 ? 130 : left > 1200 ? 240 : 380);
-      };
-      tick();
-    }
-
     const clock = setInterval(() => {
       if (state && state.phase === 'betting' && state.deadline) {
-        timeEl.textContent = `${Math.max(0, Math.ceil((state.deadline - api.serverNow()) / 1000))} s`;
+        timeEl.textContent = `Gira en ${Math.max(0, Math.ceil((state.deadline - api.serverNow()) / 1000))} s`;
       } else {
         timeEl.textContent = '';
       }
     }, 250);
 
     function update(s) {
+      const first = state === null;
       state = s;
       const myId = api.me().id;
       phaseEl.textContent = PHASE_TEXT[s.phase] || '';
 
       if (s.phase === 'spinning') {
-        if (tickedRound !== s.round) {
-          tickedRound = s.round;
+        if (spunRound !== s.round) {
+          spunRound = s.round;
+          showNumber(null, false);
+          wheel.spin(s.number, Math.max(0, s.deadline - api.serverNow()));
           dealer.say('spin');
           api.audio.play('spin');
-          startTicker(s.deadline, s.number);
         }
       } else if (s.phase === 'result') {
-        stopTicker();
+        if (spunRound !== s.round) {
+          spunRound = s.round; // joined after the spin: just show where the ball is
+          wheel.settle(s.number);
+        }
         showNumber(s.number, true);
+      } else if (first) {
+        if (s.history.length) {
+          wheel.settle(s.history[0]);
+          showNumber(s.history[0], false);
+        } else {
+          wheel.clear();
+        }
       } else {
-        stopTicker();
-        showNumber(s.history.length ? s.history[0] : null, false);
+        numEl.classList.remove('is-final');
       }
 
       clear(histEl);
-      for (const n of s.history.slice(0, 12)) histEl.append(el('span', { class: `rl__hist rl__hist--${colorOf(n)}` }, String(n)));
+      for (const n of s.history.slice(0, 14)) histEl.append(el('span', { class: `rl__hist rl__hist--${colorOf(n)}` }, String(n)));
 
       const totals = new Map();
       for (const p of s.players) {
@@ -156,8 +166,17 @@ export default {
       const winning = new Set(s.phase === 'result' && s.result ? s.result.winningSpots.concat(`straight:${s.number}`) : []);
       for (const [id, spot] of spots) {
         const t = totals.get(id);
-        spot.chips.textContent = t ? formatChips(t.total) : '';
-        spot.chips.className = `rl__chips${t ? ' is-on' : ''}${t && t.mine ? ' is-mine' : ''}`;
+        const sig = t ? `${t.total}:${t.mine}` : '';
+        if (shown.get(id) !== sig) {
+          shown.set(id, sig);
+          clear(spot.chips);
+          if (t) {
+            const chip = createChip(t.total, { size: 'sm', label: formatCompact(t.total), color: t.mine ? api.me().avatar : undefined });
+            chip.classList.add('rl__chip');
+            if (t.mine) chip.classList.add('is-mine');
+            spot.chips.append(chip);
+          }
+        }
         spot.btn.classList.toggle('is-win', winning.has(id));
         spot.btn.disabled = !s.you.canBet;
       }
@@ -178,7 +197,7 @@ export default {
           el(
             'span',
             { class: 'rl__member' },
-            api.ui.createAvatar(p, { size: 'xs' }),
+            api.bust(p, 24),
             `${p.name} `,
             showResult
               ? el('strong', { class: p.net >= 0 ? 'is-up' : 'is-down' }, `${p.net >= 0 ? '+' : ''}${formatChips(p.net)}`)
@@ -189,20 +208,22 @@ export default {
     }
 
     function event(name, payload) {
-      if (name === 'bet') api.audio.play('chip');
-      if (name === 'result') {
-        const mine = payload.results.find((r) => r.id === api.me().id);
-        if (!mine) return;
-        if (mine.net > 0) {
-          api.audio.play(mine.net >= 500 ? 'bigwin' : 'win');
-          dealer.say(mine.net >= 500 ? 'bigwin' : 'win');
-          api.ui.showBanner(root, { title: `+${formatChips(mine.net)}`, subtitle: `Salió el ${payload.number}`, kind: 'win' });
-          if (mine.net >= 500) api.ui.celebrate({ kind: 'bigwin', amount: mine.net });
-        } else if (mine.net < 0) {
-          api.audio.play('lose');
-          dealer.say('lose');
-          api.ui.showBanner(root, { title: `Salió el ${payload.number}`, subtitle: `${formatChips(mine.net)} fichas`, kind: 'lose' });
-        }
+      if (name !== 'result') return;
+      const mine = payload.results.find((r) => r.id === api.me().id);
+      if (!mine) return;
+      if (mine.net > 0) {
+        api.audio.play(mine.net >= mine.wagered * 5 ? 'bigwin' : 'win');
+        dealer.say(mine.net >= mine.wagered * 5 ? 'bigwin' : 'win');
+        api.ui.showBanner(root, { title: `+${formatChips(mine.net)}`, subtitle: `Salió el ${payload.number}`, kind: 'win' });
+        api.fx.pay(spots.get(`straight:${payload.number}`).btn, mine.won);
+        if (mine.net >= mine.wagered * 5) api.ui.celebrate({ kind: 'bigwin', amount: mine.net });
+      } else if (mine.net < 0) {
+        api.audio.play('lose');
+        dealer.say('lose');
+        api.ui.showBanner(root, { title: `Salió el ${payload.number}`, subtitle: `${formatChips(mine.net)} fichas`, kind: 'lose' });
+        api.fx.take(board, -mine.net);
+      } else {
+        dealer.say('push');
       }
     }
 
@@ -210,8 +231,8 @@ export default {
       update,
       event,
       destroy() {
-        stopTicker();
         clearInterval(clock);
+        wheel.destroy();
         dealer.destroy();
       },
     };

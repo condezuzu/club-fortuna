@@ -1,6 +1,9 @@
-// Club Fortuna — app shell: connection, welcome screen, casino floor and table view.
+// Club Fortuna — app shell: connection, saved profile, welcome screen, casino floor,
+// table view, and the always-present bottom bar with Don Fortunato and the walking avatars.
 import * as ui from './ui.js';
 import * as audio from './audio.js';
+import * as avatars from './avatars.js';
+import { createMascot } from './mascot.js';
 import roulette from './games/roulette.js';
 import blackjack from './games/blackjack.js';
 import slots from './games/slots.js';
@@ -9,21 +12,36 @@ import poker3 from './games/poker3.js';
 
 const { el, clear, formatChips, toast, createButton } = ui;
 const MODULES = { roulette, blackjack, slots, baccarat, poker3 };
+const DEFAULT_CHIPS = [5, 25, 100, 500];
+const THROW_GLYPH = { tomato: '🍅', rose: '🌹', cake: '🎂', water: '💦' };
 const app = document.getElementById('app');
+
+// "?p=2" opens a second, independent profile in the same browser (handy to try the game alone).
+const slot = new URLSearchParams(location.search).get('p') || '';
+const KEY = { token: `cf_token${slot}`, save: `cf_save${slot}`, name: `cf_name${slot}` };
 
 const S = {
   ws: null,
   online: false,
   replaced: false,
   you: null,
+  profile: null, // my profile as last seen outside a room
+  catalog: null,
   games: [],
   room: null,
   offset: 0,
   table: null,
   instance: null,
   states: {},
+  feedSeen: null,
+  nets: new Map(),
+  level: null,
+  broke: false,
+  editor: null,
+  card: null, // the profile card that is open, if any
 };
 let R = {}; // persistent nodes of the room screen
+let W = {}; // persistent nodes of the welcome screen
 
 const store = {
   get(area, key) {
@@ -47,6 +65,9 @@ const send = (msg) => {
 };
 const serverNow = () => Date.now() + S.offset;
 const me = () => (S.room ? S.room.players.find((p) => p.id === S.room.you) || null : null);
+const playerOf = (id) => (S.room ? S.room.players.find((p) => p.id === id) || null : null);
+const metaOf = (id) => S.games.find((g) => g.id === id) || null;
+const moduleOf = (meta) => (meta ? MODULES[meta.base || meta.id] : null);
 const safe = (fn) => {
   try {
     fn();
@@ -54,6 +75,50 @@ const safe = (fn) => {
     console.error(err);
   }
 };
+
+// ───────────────────────────── bottom bar: mascot + parade ─────────────────────────────
+
+const mascot = createMascot({
+  audio,
+  getContext: () => {
+    const my = me();
+    return { name: S.you ? S.you.name : '', debt: my ? my.debt : S.profile ? S.profile.debt : 0 };
+  },
+});
+const parade = avatars.createParade({ onPick: (id) => openProfile(id) });
+document.body.append(el('div', { class: 'floorbar' }, el('div', { class: 'floorbar__host' }, mascot), parade));
+
+function syncParade() {
+  if (S.room) {
+    const list = S.room.players;
+    const richest = list.length > 1 ? list.reduce((a, b) => (b.balance > a.balance ? b : a)) : null;
+    parade.sync(
+      list.map((p) => ({
+        id: p.id,
+        name: p.name,
+        avatar: p.avatar,
+        look: p.look,
+        level: p.level,
+        crown: Boolean(richest && richest.id === p.id && p.balance > 0),
+        connected: p.connected,
+        debt: p.debt,
+      })),
+      S.room.you
+    );
+  } else if (S.you && S.profile) {
+    parade.sync(
+      [{ id: S.you.id, name: S.you.name, avatar: S.you.avatar, look: S.profile.look, level: S.profile.level, crown: false, connected: true, debt: S.profile.debt }],
+      S.you.id
+    );
+  } else {
+    parade.sync([], null);
+  }
+}
+
+function applyTheme() {
+  const id = S.room ? S.room.economy.theme : S.profile ? S.profile.theme : 'theme:emerald';
+  document.documentElement.dataset.theme = String(id || 'theme:emerald').split(':')[1] || 'emerald';
+}
 
 // ───────────────────────────── connection ─────────────────────────────
 
@@ -64,8 +129,9 @@ function connect() {
   ws.onopen = () => {
     send({
       t: 'hello',
-      token: store.get(sessionStorage, 'cf_token') || undefined,
-      name: store.get(localStorage, 'cf_name') || undefined,
+      token: store.get(sessionStorage, KEY.token) || undefined,
+      save: store.get(localStorage, KEY.save) || undefined,
+      name: store.get(localStorage, KEY.name) || undefined,
     });
   };
   ws.onmessage = (event) => {
@@ -89,14 +155,30 @@ function handle(m) {
   switch (m.t) {
     case 'welcome':
       S.you = m.you;
+      S.catalog = m.catalog;
+      S.profile = m.profile;
       S.games = (m.games || []).slice().sort((a, b) => a.order - b.order);
       S.offset = m.serverNow - Date.now();
       S.online = true;
-      store.set(sessionStorage, 'cf_token', m.token);
+      store.set(sessionStorage, KEY.token, m.token);
+      if (m.save) store.set(localStorage, KEY.save, m.save);
+      if (S.room && !m.room) {
+        toast('El club se reinició y la sala se cerró. Tu jugador está a salvo: creá una sala nueva.', { kind: 'info', duration: 8000 });
+      }
       setRoom(m.room);
+      break;
+    case 'save':
+      store.set(localStorage, KEY.save, m.save);
       break;
     case 'you':
       S.you = m.you;
+      if (m.profile) S.profile = m.profile;
+      if (!S.room) {
+        refreshWelcome();
+        syncParade();
+        applyTheme();
+      }
+      refreshEditor();
       break;
     case 'room':
       setRoom(m.room);
@@ -121,14 +203,36 @@ function handle(m) {
     case 'emote':
       showEmote(m);
       break;
+    case 'throw':
+      showThrow(m);
+      break;
+    case 'rain':
+      showRain(m);
+      break;
+    case 'tip':
+      mascot.say('tip');
+      toast(`${m.name} le dejó ${formatChips(m.amount)} fichas de propina a Don Fortunato.`, { kind: 'info' });
+      break;
     case 'rescueChallenge':
       rescueGame(m);
       break;
-    case 'celebrate':
-      audio.play('jackpot');
-      ui.celebrate({ kind: 'jackpot', caption: `¡Nuevo rango: ${m.title}!`, amount: m.bonus });
-      toast(`¡El equipo subió de nivel! Bono de ${formatChips(m.bonus)} fichas para cada uno.`, { kind: 'win', duration: 6000 });
+    case 'profileOf':
+      if (S.card && S.card.id === m.player.id) S.card.fill(m.player);
       break;
+    case 'celebrate': {
+      const mine = m.bonuses && S.you && m.bonuses[S.you.id] !== undefined ? m.bonuses[S.you.id] : m.bonus;
+      audio.play('jackpot');
+      ui.celebrate({ kind: 'jackpot', caption: `¡Cuota ${m.level} cumplida!`, amount: mine });
+      toast(
+        m.mvp
+          ? `¡Cuota cumplida! Figura del equipo: ${m.mvp.name}. Tu parte del bono: ${formatChips(mine)} fichas.`
+          : `¡Cuota cumplida! Bono de ${formatChips(mine)} fichas.`,
+        { kind: 'win', duration: 7000 }
+      );
+      mascot.say('quota');
+      if (S.room) for (const p of S.room.players) parade.cheer(p.id);
+      break;
+    }
     case 'error':
       if (m.code === 'replaced') S.replaced = true;
       toast(m.message, { kind: 'error' });
@@ -144,16 +248,19 @@ function renderWelcome() {
   unmount();
   S.table = null;
   R = {};
+  W = {};
   clear(app);
   const hashCode = (location.hash.slice(1) || '').toUpperCase().replace(/[^A-Z]/g, '').slice(0, 4);
-  const name = el('input', {
+  W.name = el('input', {
     class: 'input',
     type: 'text',
     maxLength: 16,
     placeholder: 'Tu nombre',
-    value: store.get(localStorage, 'cf_name') || '',
+    value: store.get(localStorage, KEY.name) || (S.you && S.you.name !== 'Invitado' ? S.you.name : ''),
   });
   const code = el('input', { class: 'input input--code', type: 'text', maxLength: 4, placeholder: 'ABCD', value: hashCode });
+  W.avatar = el('div', { class: 'welcome__avatar' });
+  W.stats = el('p', { class: 'welcome__stats' });
 
   const go = (msg) => {
     audio.unlock();
@@ -161,13 +268,13 @@ function renderWelcome() {
       toast('Conectando con el club…', { kind: 'info' });
       return;
     }
-    const value = name.value.trim();
+    const value = W.name.value.trim();
     if (!value) {
       toast('Escribí tu nombre para entrar.', { kind: 'error' });
-      name.focus();
+      W.name.focus();
       return;
     }
-    store.set(localStorage, 'cf_name', value);
+    store.set(localStorage, KEY.name, value);
     send({ t: 'profile', name: value });
     send(msg);
   };
@@ -194,7 +301,18 @@ function renderWelcome() {
         el('p', { class: 'welcome__eyebrow' }, 'Casino cooperativo'),
         el('h1', { class: 'welcome__title' }, 'Club Fortuna'),
         el('p', { class: 'welcome__lead' }, 'Armá una sala, invitá a tus amigos y jueguen juntos contra la casa.'),
-        el('label', { class: 'welcome__label' }, 'Nombre', name),
+        el(
+          'div',
+          { class: 'welcome__me' },
+          W.avatar,
+          el(
+            'div',
+            { class: 'welcome__fields' },
+            el('label', { class: 'welcome__label' }, 'Nombre', W.name),
+            W.stats,
+            createButton('Personalizar avatar', { variant: 'ghost', size: 'sm', icon: 'star', onClick: openWardrobe })
+          )
+        ),
         createButton('Crear sala', { variant: 'primary', size: 'lg', block: true, onClick: () => go({ t: 'createRoom' }) }),
         el('div', { class: 'welcome__or' }, 'o unite con un código'),
         el('div', { class: 'welcome__join' }, code, createButton('Unirme', { variant: 'secondary', size: 'lg', onClick: join })),
@@ -202,34 +320,125 @@ function renderWelcome() {
       )
     )
   );
-  (hashCode && name.value ? code : name).focus();
+  refreshWelcome();
+  (hashCode && W.name.value ? code : W.name).focus();
+}
+
+function refreshWelcome() {
+  if (!W.avatar || !S.you || !S.profile) return;
+  const player = { name: S.you.name, avatar: S.you.avatar, look: S.profile.look };
+  if (W.char) W.char.update(player);
+  else {
+    W.char = avatars.createAvatar(player, { size: 116 });
+    W.avatar.append(W.char);
+  }
+  const p = S.profile;
+  W.stats.textContent = `${formatChips(p.balance)} fichas · pico ${formatChips(p.peak)} · Nv ${p.level} ${p.rank}${p.debt > 0 ? ` · debés ${formatChips(p.debt)}` : ''}`;
 }
 
 // ───────────────────────────── room ─────────────────────────────
 
+function profileFromRoom(room) {
+  const my = room.players.find((p) => p.id === room.you);
+  if (!my || !S.profile) return S.profile;
+  return {
+    ...S.profile,
+    balance: my.balance + my.stake,
+    peak: my.peak,
+    debt: my.debt,
+    level: my.level,
+    rank: my.rank,
+    title: my.title,
+    look: my.look,
+    stats: my.stats,
+    owned: room.economy.owned,
+    theme: room.economy.theme,
+  };
+}
+
 function setRoom(room) {
+  const before = S.room;
+  if (before && !room) S.profile = profileFromRoom(before);
   S.room = room;
+  applyTheme();
   if (!room) {
+    S.feedSeen = null;
+    S.nets = new Map();
+    S.level = null;
+    S.broke = false;
     renderWelcome();
+    syncParade();
     return;
   }
-  if (location.hash.slice(1) !== room.code) history.replaceState(null, '', `#${room.code}`);
+  if (S.you) {
+    const mine = room.players.find((p) => p.id === room.you);
+    if (mine) S.you = { ...S.you, name: mine.name, avatar: mine.avatar };
+  }
+  if (location.hash.slice(1) !== room.code) history.replaceState(null, '', `${location.pathname}${location.search}#${room.code}`);
   if (!R.root || !R.root.isConnected) buildRoom();
   syncTable();
   updateRoom();
+  syncParade();
+  react(before, room);
+  refreshEditor();
+  if (S.card) S.card.sync();
+}
+
+/** Don Fortunato and the avatars react to what changed between two snapshots. */
+function react(before, room) {
+  const my = me();
+  // Bets that resolved: the contribution moves only then.
+  for (const p of room.players) {
+    const prev = S.nets.get(p.id);
+    if (prev !== undefined && p.net !== prev) {
+      if (p.net > prev) parade.cheer(p.id);
+      else parade.sad(p.id);
+    }
+    S.nets.set(p.id, p.net);
+  }
+  // Feed lines that are new to this client.
+  const last = room.feed.length ? room.feed[room.feed.length - 1].id : 0;
+  if (S.feedSeen !== null) {
+    const kinds = { join: 'join', loan: 'loan', rescue: 'rescue', fail: 'rescueFail', shop: 'shop' };
+    const fresh = room.feed.filter((entry) => entry.id > S.feedSeen).reverse();
+    const entry = fresh.find((item) => kinds[item.kind] && !(item.kind === 'join' && item.playerId === room.you));
+    if (entry) mascot.say(kinds[entry.kind]);
+  }
+  S.feedSeen = last;
+  if (!my) return;
+  if (S.level !== null && my.level > S.level) {
+    audio.play('bigwin');
+    toast(`¡Subiste a nivel ${my.level}! Ahora sos ${my.rank}. Tu límite con el prestamista sube a ${formatChips(room.economy.loanLimit)}.`, {
+      kind: 'win',
+      duration: 6000,
+    });
+    mascot.say('levelup');
+    parade.cheer(my.id);
+  }
+  S.level = my.level;
+  const broke = my.balance + my.stake < room.rescue.threshold;
+  if (broke && !S.broke && before) mascot.say('poor');
+  S.broke = broke;
 }
 
 function buildRoom() {
   clear(app);
-  R = {};
+  R = { cards: new Map() };
   R.code = el('strong', { class: 'hud__code' });
   R.balance = el('strong', { class: 'hud__balance' });
-  R.rescue = createButton('Rescate', { variant: 'danger', size: 'sm', icon: 'lifebuoy', onClick: () => send({ t: 'rescue' }) });
-  R.level = el('span', { class: 'hud__level' });
   R.debt = el('span', { class: 'hud__debt' });
-  R.emotes = el('div', { class: 'emote-bar' });
-  const bank = createButton('Banco', { variant: 'ghost', size: 'sm', icon: 'chip', onClick: bankModal });
-  const shop = createButton('Tienda', { variant: 'ghost', size: 'sm', icon: 'crown', onClick: shopModal });
+  R.wallet = el('div', { class: 'hud__wallet', title: 'Tus fichas' }, ui.icon('chip'), el('div', { class: 'hud__money' }, R.balance, R.debt));
+  R.rescue = createButton('Rescate', { variant: 'danger', size: 'sm', icon: 'lifebuoy', onClick: () => send({ t: 'rescue' }) });
+  R.meBust = el('span', { class: 'hud__bust' });
+  R.meName = el('span', { class: 'hud__name' });
+  R.meLevel = el('span', { class: 'hud__level' });
+  R.meBar = el('span', { class: 'hud__xp' }, el('i'));
+  const meBtn = el(
+    'button',
+    { class: 'hud__me', type: 'button', title: 'Tu perfil', onClick: () => openProfile(S.room.you) },
+    R.meBust,
+    el('span', { class: 'hud__who' }, R.meName, R.meLevel, R.meBar)
+  );
   R.mute = createButton(null, {
     variant: 'ghost',
     size: 'sm',
@@ -251,10 +460,10 @@ function buildRoom() {
       else toast(url, { duration: 8000 });
     },
   });
-  const leave = createButton('Salir', { variant: 'ghost', size: 'sm', onClick: () => send({ t: 'leaveRoom' }) });
 
   R.main = el('main', { class: 'room__main' });
   R.players = el('div', { class: 'side__list' });
+  R.emotes = el('div', { class: 'emote-bar' });
   R.feed = el('div', { class: 'side__feed' });
   R.chatList = el('div', { class: 'side__chat' });
   R.chatInput = el('input', { class: 'input', type: 'text', maxLength: 200, placeholder: 'Escribí un mensaje…' });
@@ -280,17 +489,16 @@ function buildRoom() {
       'header',
       { class: 'hud' },
       el('span', { class: 'hud__brand' }, 'Club Fortuna'),
-      el('span', { class: 'hud__item' }, 'Sala ', R.code),
+      el('span', { class: 'hud__room' }, 'Sala ', R.code),
       copy,
       el('span', { class: 'hud__spacer' }),
-      R.level,
-      R.debt,
       R.rescue,
-      bank,
-      shop,
-      el('span', { class: 'hud__item hud__item--chips' }, ui.icon('chip'), R.balance),
+      R.wallet,
+      meBtn,
+      createButton('Tienda', { variant: 'ghost', size: 'sm', icon: 'crown', onClick: openShop }),
+      createButton('Banco', { variant: 'ghost', size: 'sm', icon: 'chip', onClick: openBank }),
       R.mute,
-      leave
+      createButton('Salir', { variant: 'ghost', size: 'sm', icon: 'close', onClick: () => send({ t: 'leaveRoom' }) })
     ),
     el(
       'div',
@@ -316,7 +524,7 @@ function unmount() {
 
 function syncTable() {
   const my = me();
-  const want = my && MODULES[my.table] ? my.table : null;
+  const want = my && moduleOf(metaOf(my.table)) ? my.table : null;
   if (R.view && want === S.table) return;
   unmount();
   S.table = want;
@@ -324,45 +532,136 @@ function syncTable() {
   else buildFloor();
 }
 
+function denomination(amount) {
+  let value = ui.CHIP_VALUES[0];
+  for (const v of ui.CHIP_VALUES) if (amount >= v) value = v;
+  return value;
+}
+
+/** Flying chips: bets going out, winnings coming to the wallet, losses going to the dealer. */
+const fx = {
+  bet(from, to, value) {
+    audio.play('chip');
+    if (from && to) ui.flyChip(from, to, { value, size: 'sm', duration: 380 });
+  },
+  pay(from, amount) {
+    if (!from || !R.wallet || !(amount > 0)) return;
+    audio.play('chips');
+    const wallet = R.wallet;
+    Promise.resolve(
+      ui.flyChip(from, wallet, {
+        value: denomination(amount / 3),
+        size: 'sm',
+        count: Math.min(10, 3 + Math.floor(Math.log10(amount + 1) * 1.6)),
+        duration: 680,
+        stagger: 55,
+      })
+    ).then(() => {
+      wallet.classList.remove('is-pop');
+      void wallet.offsetWidth;
+      wallet.classList.add('is-pop');
+    });
+  },
+  take(from, amount) {
+    if (!from || !(amount > 0)) return;
+    ui.flyChip(from, mascot, {
+      value: denomination(amount / 2),
+      size: 'sm',
+      count: Math.min(6, 2 + Math.floor(Math.log10(amount + 1))),
+      duration: 600,
+      stagger: 60,
+    });
+  },
+};
+
 function buildTable(id) {
-  const meta = S.games.find((g) => g.id === id) || { id, name: id };
+  const meta = metaOf(id);
+  const mod = moduleOf(meta);
+  const kind = meta.base || meta.id;
   R.view = 'table';
+  R.cards = new Map();
   clear(R.main);
-  const stage = el('div', { class: `game-stage game-${id}` });
+  const stage = el('div', { class: `game-stage game-${kind}${meta.tier === 'high' ? ' game-stage--high' : ''}` });
   R.main.append(
     el(
       'div',
       { class: 'table-bar' },
       createButton('Volver al salón', { variant: 'ghost', size: 'sm', icon: 'back', onClick: () => send({ t: 'stand' }) }),
-      el('h2', { class: 'table-bar__title' }, meta.name)
+      el('h2', { class: 'table-bar__title' }, meta.name),
+      meta.tier === 'high' ? el('span', { class: 'table-bar__tier' }, 'High Limit') : null,
+      el('span', { class: 'table-bar__limits' }, `Apuestas de ${formatChips(meta.minBet)} a ${formatChips(meta.maxBet)}`)
     ),
     stage
   );
   const api = {
     send: (action) => send({ t: 'action', action }),
-    me: () => me() || { id: S.you.id, name: S.you.name, avatar: S.you.avatar, balance: 0 },
+    me: () => me() || { id: S.you.id, name: S.you.name, avatar: S.you.avatar, balance: 0, debt: 0 },
     players: () => (S.room ? S.room.players : []),
-    player: (pid) => (S.room ? S.room.players.find((p) => p.id === pid) || null : null),
-    meta,
+    player: playerOf,
+    meta: { ...meta, chips: meta.chips || DEFAULT_CHIPS },
     serverNow,
     ui,
     audio,
+    fx,
+    dealer: { say: (k, text) => mascot.say(k, text), play: (anim) => mascot.play(anim) },
+    bust: (p, size) => avatars.createBust(playerOf(p.id) || p, { size: size || 28 }),
   };
   try {
-    S.instance = MODULES[id].mount(stage, api);
+    S.instance = mod.mount(stage, api);
     if (S.states[id]) S.instance.update(S.states[id]);
   } catch (err) {
     console.error(err);
     toast('No pudimos abrir la mesa.', { kind: 'error' });
   }
+  if (meta.tier === 'high') mascot.say('highroller');
 }
 
 function buildFloor() {
   R.view = 'floor';
+  R.cards = new Map();
   clear(R.main);
-  R.goal = el('section', { class: 'goal panel panel--ornate' });
-  R.games = el('div', { class: 'games' });
-  R.main.append(R.goal, R.games, el('p', { class: 'floor__note' }, 'Fichas ficticias · Sin dinero real · Solo por diversión'));
+  R.quota = el('section', { class: 'quota panel panel--ornate' });
+  const lobby = (title, sub, tier) => {
+    const grid = el('div', { class: `games games--${tier}` });
+    for (const meta of S.games.filter((g) => (g.tier || 'main') === tier)) grid.append(gameCard(meta));
+    return el(
+      'section',
+      { class: `lobby lobby--${tier}` },
+      el('header', { class: 'lobby__head' }, el('h2', { class: 'lobby__title' }, title), el('p', { class: 'lobby__sub' }, sub)),
+      grid
+    );
+  };
+  R.main.append(R.quota, lobby('Salón principal', 'Mesas para todo el equipo', 'main'));
+  const high = S.games.filter((g) => g.tier === 'high');
+  if (high.length) {
+    const min = Math.min(...high.map((g) => g.minBalance || 0));
+    R.main.append(lobby('Salón High Limit', `Solo para quien tenga ${formatChips(min)} fichas o más en la mano`, 'high'));
+  }
+  R.main.append(el('p', { class: 'floor__note' }, 'Fichas ficticias · Sin dinero real · Solo por diversión'));
+}
+
+function gameCard(meta) {
+  const mod = moduleOf(meta);
+  const seated = el('div', { class: 'game-card__seated' });
+  const button = createButton('Sentarse', { variant: 'primary', block: true, onClick: () => send({ t: 'sit', game: meta.id }) });
+  let art = null;
+  if (mod && typeof mod.art === 'function') {
+    safe(() => {
+      art = mod.art(ui);
+    });
+  }
+  const card = el(
+    'article',
+    { class: `game-card panel${meta.tier === 'high' ? ' game-card--high' : ''}` },
+    el('div', { class: `game-card__art game-card__art--${meta.base || meta.id}` }, art || ui.icon(mod ? mod.icon : 'clock')),
+    el('h3', { class: 'game-card__name' }, meta.name),
+    el('p', { class: 'game-card__tagline' }, meta.tagline),
+    el('p', { class: 'game-card__limits' }, `Apuestas de ${formatChips(meta.minBet)} a ${formatChips(meta.maxBet)}`),
+    seated,
+    button
+  );
+  R.cards.set(meta.id, { card, seated, button, meta, mod });
+  return card;
 }
 
 function updateRoom() {
@@ -371,147 +670,32 @@ function updateRoom() {
   if (!room || !my) return;
   R.code.textContent = room.code;
   R.balance.textContent = formatChips(my.balance);
-  R.rescue.hidden = !(room.rescue && my.balance + my.stake < room.rescue.threshold);
   flashBalance(my.balance);
-  const base = (room.economy && room.economy.xpBase) || 200;
-  const next = base * (my.level + 1) * (my.level + 1);
-  R.level.textContent = `Nv ${my.level} · ${my.rank}`;
-  R.level.title = `Apostaste ${formatChips(my.stats.wagered)} fichas. Próximo nivel a las ${formatChips(next)}.`;
-  R.debt.textContent = my.debt > 0 ? `Debés ${formatChips(my.debt)}` : '';
-  renderEmotes();
+  R.debt.textContent = my.debt > 0 ? `debés ${formatChips(my.debt)}` : '';
+  R.rescue.hidden = !(room.rescue && my.balance + my.stake < room.rescue.threshold);
+
+  if (R.meChar) R.meChar.update(my);
+  else {
+    R.meChar = avatars.createBust(my, { size: 34 });
+    R.meBust.append(R.meChar);
+  }
+  R.meName.textContent = my.name;
+  R.meLevel.textContent = `Nv ${my.level} · ${my.title || my.rank}`;
+  const base = S.catalog.xpBase;
+  const from = base * my.level * my.level;
+  const to = base * (my.level + 1) * (my.level + 1);
+  R.meBar.firstChild.style.width = `${Math.max(0, Math.min(100, ((my.stats.wagered - from) / (to - from)) * 100))}%`;
+  R.meBar.title = `Apostaste ${formatChips(my.stats.wagered)} fichas. Próximo nivel a las ${formatChips(to)}.`;
+
   renderPlayers();
+  renderEmotes();
   renderFeed();
   renderChat();
   if (R.view === 'floor') {
-    renderGoal();
+    renderQuota();
     renderGames();
   }
 }
-
-function tableName(id) {
-  const meta = S.games.find((g) => g.id === id);
-  return meta ? meta.name : 'En el salón';
-}
-
-function renderPlayers() {
-  clear(R.players);
-  const list = S.room.players;
-  const richest = list.length > 1 ? list.reduce((a, b) => (b.balance > a.balance ? b : a)) : null;
-  for (const p of list) {
-    const mine = p.id === S.room.you;
-    const crown = richest && richest.id === p.id && p.balance > 0;
-    R.players.append(
-      el(
-        'div',
-        { class: `member${p.connected ? '' : ' member--off'}${crown ? ' member--crown' : ''}${p.level >= 6 ? ' member--elite' : ''}` },
-        el('div', { class: 'member__avatar' }, ui.createAvatar(p, { size: 'sm' }), crown ? el('span', { class: 'member__crown', title: 'El más rico de la sala' }, '👑') : null),
-        el(
-          'div',
-          { class: 'member__text' },
-          el('span', { class: 'member__name' }, mine ? `${p.name} (vos)` : p.name, el('span', { class: 'member__level' }, `Nv ${p.level}`)),
-          el('span', { class: 'member__title' }, p.title || p.rank),
-          el('span', { class: 'member__meta' }, p.connected ? tableName(p.table) : 'Desconectado')
-        ),
-        el(
-          'div',
-          { class: 'member__money' },
-          el('span', { class: 'member__chips' }, formatChips(p.balance)),
-          p.debt > 0 ? el('span', { class: 'member__debt' }, `debe ${formatChips(p.debt)}`) : null
-        ),
-        mine
-          ? null
-          : createButton(null, { variant: 'ghost', size: 'sm', icon: 'gift', ariaLabel: `Regalar fichas a ${p.name}`, onClick: () => giftModal(p) })
-      )
-    );
-  }
-}
-
-function giftModal(p) {
-  const input = el('input', { class: 'input', type: 'number', min: 1, step: 1, value: 100 });
-  ui.openModal({
-    title: `Regalar fichas a ${p.name}`,
-    size: 'sm',
-    content: el('label', { class: 'welcome__label' }, 'Cantidad de fichas', input),
-    actions: [
-      { label: 'Cancelar', variant: 'ghost' },
-      {
-        label: 'Regalar',
-        variant: 'primary',
-        onClick: () => {
-          const amount = Math.floor(Number(input.value));
-          if (!(amount >= 1)) return false;
-          send({ t: 'gift', to: p.id, amount });
-          return true;
-        },
-      },
-    ],
-  });
-}
-
-function renderFeed() {
-  clear(R.feed);
-  const items = S.room.feed.slice().sort((a, b) => b.ts - a.ts).slice(0, 12);
-  if (items.length === 0) R.feed.append(el('p', { class: 'side__empty' }, 'Todavía no pasó nada.'));
-  for (const item of items) R.feed.append(el('p', { class: `feed__item feed__item--${item.kind || 'info'}` }, item.text));
-}
-
-function renderChat() {
-  if (!R.chatList || !S.room) return;
-  clear(R.chatList);
-  const msgs = S.room.chat.slice(-40);
-  if (msgs.length === 0) R.chatList.append(el('p', { class: 'side__empty' }, 'Saludá a la mesa.'));
-  for (const msg of msgs) {
-    R.chatList.append(
-      el('p', { class: 'chat__msg' }, el('strong', { style: { color: ui.avatarColor(msg.avatar) } }, `${msg.name}: `), msg.text)
-    );
-  }
-  R.chatList.scrollTop = R.chatList.scrollHeight;
-}
-
-function renderGoal() {
-  const g = S.room.goal;
-  clear(R.goal);
-  const span = Math.max(1, (g.target || 0) - (g.prevTarget || 0));
-  const pct = Math.max(0, Math.min(100, ((g.profit - (g.prevTarget || 0)) / span) * 100));
-  R.goal.append(
-    el('p', { class: 'goal__eyebrow' }, `Meta del equipo · Nivel ${g.level}`),
-    el('h2', { class: 'goal__title' }, g.title),
-    el('div', { class: 'goal__bar' }, el('div', { class: 'goal__fill', style: { width: `${pct}%` } })),
-    el(
-      'p',
-      { class: 'goal__text' },
-      `Ganancia del equipo: ${formatChips(g.profit)}`,
-      g.target ? ` de ${formatChips(g.target)} · Próximo rango: ${g.nextTitle}` : ''
-    )
-  );
-}
-
-function renderGames() {
-  clear(R.games);
-  for (const meta of S.games) {
-    const mod = MODULES[meta.id];
-    const seated = ((S.room.tables[meta.id] || {}).seated || []).map((pid) => S.room.players.find((p) => p.id === pid)).filter(Boolean);
-    R.games.append(
-      el(
-        'article',
-        { class: 'game-card panel' },
-        el('div', { class: 'game-card__art' }, ui.icon(mod ? mod.icon : 'clock')),
-        el('h3', { class: 'game-card__name' }, meta.name),
-        el('p', { class: 'game-card__tagline' }, meta.tagline),
-        el('p', { class: 'game-card__limits' }, `Apuestas de ${formatChips(meta.minBet)} a ${formatChips(meta.maxBet)}`),
-        el('div', { class: 'game-card__seated' }, ...seated.map((p) => ui.createAvatar(p, { size: 'xs' }))),
-        createButton(mod ? 'Sentarse' : 'Próximamente', {
-          variant: 'primary',
-          block: true,
-          disabled: !mod,
-          onClick: () => send({ t: 'sit', game: meta.id }),
-        })
-      )
-    );
-  }
-}
-
-// ───────────────────────────── economy & social ─────────────────────────────
 
 let lastBalance = null;
 function flashBalance(balance) {
@@ -524,30 +708,552 @@ function flashBalance(balance) {
   lastBalance = balance;
 }
 
-function renderEmotes() {
-  const eco = S.room.economy;
-  if (!eco) return;
-  const key = eco.owned.join(',');
-  if (R.emotes.dataset.key === key && R.emotes.children.length) return;
-  R.emotes.dataset.key = key;
-  clear(R.emotes);
-  const all = eco.emotes.concat(eco.owned.includes(eco.vip.id) ? eco.vipEmotes : []);
-  for (const emote of all) {
-    R.emotes.append(el('button', { class: 'emote-btn', type: 'button', 'aria-label': `Emote ${emote}`, onClick: () => send({ t: 'emote', emote }) }, emote));
+function tableName(id) {
+  const meta = metaOf(id);
+  return meta ? meta.name : 'En el salón';
+}
+
+function renderPlayers() {
+  clear(R.players);
+  const list = S.room.players;
+  const richest = list.length > 1 ? list.reduce((a, b) => (b.balance > a.balance ? b : a)) : null;
+  for (const p of list) {
+    const mine = p.id === S.room.you;
+    const crown = Boolean(richest && richest.id === p.id && p.balance > 0);
+    R.players.append(
+      el(
+        'button',
+        {
+          class: `member${p.connected ? '' : ' member--off'}${crown ? ' member--crown' : ''}${p.level >= 6 ? ' member--elite' : ''}`,
+          type: 'button',
+          title: `Ver el perfil de ${p.name}`,
+          onClick: () => openProfile(p.id),
+        },
+        el(
+          'span',
+          { class: 'member__avatar' },
+          avatars.createBust(p, { size: 36 }),
+          crown ? el('span', { class: 'member__crown', title: 'El más rico de la sala' }, '👑') : null
+        ),
+        el(
+          'span',
+          { class: 'member__text' },
+          el('span', { class: 'member__name' }, mine ? `${p.name} (vos)` : p.name, el('span', { class: 'member__level' }, `Nv ${p.level}`)),
+          el('span', { class: 'member__title' }, p.title || p.rank),
+          el('span', { class: 'member__meta' }, p.connected ? tableName(p.table) : 'Desconectado')
+        ),
+        el(
+          'span',
+          { class: 'member__money' },
+          el('span', { class: 'member__chips' }, formatChips(p.balance)),
+          el('span', { class: 'member__peak', title: 'Lo máximo que llegó a tener' }, `pico ${formatChips(p.peak)}`),
+          p.debt > 0 ? el('span', { class: 'member__debt' }, `debe ${formatChips(p.debt)}`) : null
+        )
+      )
+    );
   }
 }
 
-function showEmote(m) {
-  audio.play('notify');
-  const node = el(
-    'div',
-    { class: 'emote-pop', style: { left: `${12 + Math.random() * 60}%` } },
-    el('span', { class: 'emote-pop__face' }, m.emote),
-    el('span', { class: 'emote-pop__name', style: { background: ui.avatarColor(m.avatar) } }, m.name)
-  );
-  document.body.append(node);
-  setTimeout(() => node.remove(), 2600);
+function renderEmotes() {
+  const owned = S.room.economy.owned;
+  const key = owned.join(',');
+  if (R.emotes.dataset.key === key && R.emotes.children.length) return;
+  R.emotes.dataset.key = key;
+  clear(R.emotes);
+  const all = S.catalog.emotes.concat(owned.includes(S.catalog.vip.id) ? S.catalog.vipEmotes : []);
+  for (const emote of all) {
+    R.emotes.append(
+      el('button', { class: 'emote-btn', type: 'button', 'aria-label': `Emote ${emote}`, onClick: () => send({ t: 'emote', emote }) }, emote)
+    );
+  }
 }
+
+function renderFeed() {
+  clear(R.feed);
+  const items = S.room.feed
+    .slice()
+    .sort((a, b) => b.id - a.id)
+    .slice(0, 14);
+  if (items.length === 0) R.feed.append(el('p', { class: 'side__empty' }, 'Todavía no pasó nada.'));
+  for (const item of items) R.feed.append(el('p', { class: `feed__item feed__item--${item.kind || 'info'}` }, item.text));
+}
+
+function renderChat() {
+  if (!R.chatList || !S.room) return;
+  clear(R.chatList);
+  const msgs = S.room.chat.slice(-40);
+  if (msgs.length === 0) R.chatList.append(el('p', { class: 'side__empty' }, 'Saludá a la mesa.'));
+  for (const msg of msgs) {
+    R.chatList.append(el('p', { class: 'chat__msg' }, el('strong', { style: { color: ui.avatarColor(msg.avatar) } }, `${msg.name}: `), msg.text));
+  }
+  R.chatList.scrollTop = R.chatList.scrollHeight;
+}
+
+/** The team quota, and who is actually pulling the cart. */
+function renderQuota() {
+  const g = S.room.goal;
+  const players = S.room.players.slice().sort((a, b) => b.net - a.net);
+  const span = Math.max(1, (g.target || 0) - (g.prevTarget || 0));
+  const pct = Math.max(0, Math.min(100, ((g.profit - (g.prevTarget || 0)) / span) * 100));
+  const positive = players.filter((p) => p.net > 0);
+  const others = g.profit - players.reduce((sum, p) => sum + p.net, 0);
+
+  const fill = el('div', { class: 'quota__fill', style: { width: `${pct}%` } });
+  for (const p of positive) {
+    fill.append(
+      el('i', {
+        class: 'quota__seg',
+        title: `${p.name}: +${formatChips(p.net)}`,
+        style: { flexGrow: String(p.net), background: ui.avatarColor(p.avatar) },
+      })
+    );
+  }
+
+  const legend = el('div', { class: 'quota__legend' });
+  players.forEach((p, index) => {
+    const mvp = index === 0 && p.net > 0;
+    legend.append(
+      el(
+        'button',
+        { class: `quota__who${mvp ? ' is-mvp' : ''}`, type: 'button', onClick: () => openProfile(p.id) },
+        avatars.createBust(p, { size: 30 }),
+        el('span', { class: 'quota__name' }, p.name, mvp ? el('em', null, 'Figura') : null),
+        el('strong', { class: p.net > 0 ? 'is-up' : p.net < 0 ? 'is-down' : '' }, `${p.net > 0 ? '+' : ''}${formatChips(p.net)}`)
+      )
+    );
+  });
+  if (others !== 0) {
+    legend.append(
+      el(
+        'span',
+        { class: 'quota__who quota__who--gone' },
+        el('span', { class: 'quota__name' }, 'Los que se fueron'),
+        el('strong', { class: others > 0 ? 'is-up' : 'is-down' }, `${others > 0 ? '+' : ''}${formatChips(others)}`)
+      )
+    );
+  }
+
+  clear(R.quota);
+  R.quota.append(
+    el('p', { class: 'quota__eyebrow' }, `Cuota del equipo · ${g.level} ${g.level === 1 ? 'cumplida' : 'cumplidas'}`),
+    el(
+      'div',
+      { class: 'quota__head' },
+      el('h2', { class: 'quota__title' }, formatChips(g.profit), el('small', null, ` de ${formatChips(g.target)}`)),
+      el(
+        'p',
+        { class: 'quota__text' },
+        'Ganancia del equipo contra la casa. Al cumplir la cuota hay bono para todos, y se reparte según lo que aportó cada uno.'
+      )
+    ),
+    el('div', { class: 'quota__bar' }, fill),
+    legend
+  );
+}
+
+function renderGames() {
+  const my = me();
+  for (const { seated, button, meta, mod, card } of R.cards.values()) {
+    const here = ((S.room.tables[meta.id] || {}).seated || []).map(playerOf).filter(Boolean);
+    clear(seated);
+    for (const p of here) seated.append(avatars.createBust(p, { size: 26 }));
+    const missing = meta.minBalance ? meta.minBalance - my.balance : 0;
+    const locked = missing > 0;
+    card.classList.toggle('is-locked', locked);
+    button.disabled = !mod || locked;
+    button.setLabel(!mod ? 'Próximamente' : locked ? `Te faltan ${formatChips(missing)}` : 'Sentarse');
+  }
+}
+
+// ───────────────────────────── profile card (stats + history + actions) ─────────────────────────────
+
+function ago(ts) {
+  const seconds = Math.max(0, Math.round((serverNow() - ts) / 1000));
+  if (seconds < 60) return 'recién';
+  if (seconds < 3600) return `hace ${Math.round(seconds / 60)} min`;
+  if (seconds < 86400) return `hace ${Math.round(seconds / 3600)} h`;
+  return `hace ${Math.round(seconds / 86400)} d`;
+}
+
+function openProfile(id) {
+  const first = playerOf(id);
+  if (!first) return;
+  const mine = id === S.room.you;
+  const char = avatars.createAvatar(first, { size: 132 });
+  const head = el('div', { class: 'pcard__head' });
+  const stats = el('div', { class: 'pcard__stats' });
+  const actions = el('div', { class: 'pcard__actions' });
+  const history = el('div', { class: 'pcard__history' }, el('p', { class: 'side__empty' }, 'Cargando…'));
+  const stat = (label, value, cls) => el('div', { class: 'pcard__stat' }, el('span', null, label), el('strong', { class: cls || '' }, value));
+  let details = null;
+  let modal = null;
+  const close = () => modal && modal.close();
+
+  const sync = () => {
+    const p = playerOf(id);
+    if (!p) return;
+    char.update(p);
+    clear(head);
+    head.append(el('h3', { class: 'pcard__name' }, p.name), el('p', { class: 'pcard__rank' }, `Nivel ${p.level} · ${p.rank}`));
+    if (p.title) head.append(el('p', { class: 'pcard__title' }, p.title));
+    head.append(el('p', { class: 'pcard__where' }, p.connected ? tableName(p.table) : 'Desconectado'));
+    clear(stats);
+    stats.append(
+      stat('Fichas', formatChips(p.balance)),
+      stat('Pico de fichas', formatChips(p.peak), 'is-gold'),
+      stat('Aporte a la cuota', `${p.net > 0 ? '+' : ''}${formatChips(p.net)}`, p.net > 0 ? 'is-up' : p.net < 0 ? 'is-down' : ''),
+      stat('Deuda', formatChips(p.debt), p.debt > 0 ? 'is-down' : ''),
+      stat('Apostado', formatChips(p.stats.wagered)),
+      stat('Cobrado', formatChips(p.stats.won)),
+      stat('Mayor premio', formatChips(p.stats.biggestWin)),
+      stat('Propinas al crupier', formatChips(details ? details.tips : 0))
+    );
+    clear(actions);
+    if (mine) {
+      actions.append(
+        createButton('Vestuario', { variant: 'primary', size: 'sm', icon: 'star', onClick: () => { close(); openWardrobe(); } }),
+        createButton('Tienda', { variant: 'secondary', size: 'sm', icon: 'crown', onClick: () => { close(); openShop(); } }),
+        createButton('Banco', { variant: 'secondary', size: 'sm', icon: 'chip', onClick: () => { close(); openBank(); } })
+      );
+    } else {
+      actions.append(createButton('Regalar fichas', { variant: 'primary', size: 'sm', icon: 'gift', onClick: () => giftModal(p) }));
+      if (p.debt > 0) actions.append(createButton('Pagarle la deuda', { variant: 'secondary', size: 'sm', onClick: () => debtModal(p) }));
+      for (const item of S.catalog.throwables) {
+        actions.append(
+          el(
+            'button',
+            {
+              class: 'throw-btn',
+              type: 'button',
+              title: `Tirarle: ${item.name}`,
+              onClick: () => {
+                send({ t: 'throw', to: id, item: item.id });
+                close();
+              },
+            },
+            el('span', null, THROW_GLYPH[item.id] || '❓'),
+            el('small', null, formatChips(item.price))
+          )
+        );
+      }
+    }
+  };
+
+  const fill = (data) => {
+    details = data;
+    sync();
+    clear(history);
+    if (!data.history.length) history.append(el('p', { class: 'side__empty' }, 'Todavía no jugó ninguna mano.'));
+    for (const entry of data.history) {
+      const net = entry.r - entry.w;
+      history.append(
+        el(
+          'div',
+          { class: 'pcard__row' },
+          el('span', { class: 'pcard__game' }, entry.g),
+          el('span', { class: 'pcard__bet' }, `apostó ${formatChips(entry.w)}`),
+          el('strong', { class: net > 0 ? 'is-up' : net < 0 ? 'is-down' : '' }, `${net > 0 ? '+' : ''}${formatChips(net)}`),
+          el('span', { class: 'pcard__when' }, ago(entry.t))
+        )
+      );
+    }
+  };
+
+  modal = ui.openModal({
+    title: mine ? 'Tu perfil' : 'Perfil',
+    size: 'md',
+    content: el(
+      'div',
+      { class: 'pcard' },
+      el('div', { class: 'pcard__top' }, el('div', { class: 'pcard__avatar' }, char), head),
+      stats,
+      actions,
+      el('h4', { class: 'pcard__subtitle' }, 'Últimas jugadas'),
+      history
+    ),
+    actions: [{ label: 'Cerrar', variant: 'ghost' }],
+    onClose: () => {
+      if (S.card && S.card.id === id) S.card = null;
+    },
+  });
+  S.card = { id, fill, sync };
+  sync();
+  send({ t: 'profileOf', id });
+}
+
+function amountModal({ title, label, value, action, onSubmit }) {
+  const input = el('input', { class: 'input', type: 'number', min: 1, step: 1, value });
+  ui.openModal({
+    title,
+    size: 'sm',
+    content: el('label', { class: 'welcome__label' }, label, input),
+    actions: [
+      { label: 'Cancelar', variant: 'ghost' },
+      {
+        label: action,
+        variant: 'primary',
+        onClick: () => {
+          const amount = Math.floor(Number(input.value));
+          if (!(amount >= 1)) return false;
+          onSubmit(amount);
+          return true;
+        },
+      },
+    ],
+  });
+}
+
+function giftModal(p) {
+  amountModal({
+    title: `Regalar fichas a ${p.name}`,
+    label: 'Cantidad de fichas',
+    value: 100,
+    action: 'Regalar',
+    onSubmit: (amount) => send({ t: 'gift', to: p.id, amount }),
+  });
+}
+
+function debtModal(p) {
+  amountModal({
+    title: `Pagar la deuda de ${p.name}`,
+    label: `Debe ${formatChips(p.debt)} fichas. ¿Cuánto ponés?`,
+    value: Math.min(p.debt, me().balance),
+    action: 'Pagar',
+    onSubmit: (amount) => send({ t: 'repayFor', to: p.id, amount }),
+  });
+}
+
+// ───────────────────────────── wardrobe ─────────────────────────────
+
+function editorState() {
+  const my = me();
+  return {
+    player: { name: S.you.name, avatar: my ? my.avatar : S.you.avatar, look: my ? my.look : S.profile.look },
+    owned: S.room ? S.room.economy.owned : S.profile.owned,
+    balance: my ? my.balance : S.profile.balance,
+    canBuy: Boolean(my) && my.debt === 0,
+    lockedReason: my ? 'Con deuda no hay compras: primero pagale al prestamista.' : 'Entrá a una sala para comprar accesorios.',
+  };
+}
+
+function refreshEditor() {
+  if (S.editor && S.you && S.profile) S.editor.refresh(editorState());
+}
+
+function openWardrobe() {
+  if (!S.you || !S.profile || !S.catalog) {
+    toast('Conectando con el club…', { kind: 'info' });
+    return;
+  }
+  const editor = avatars.createLookEditor({
+    ...editorState(),
+    catalog: S.catalog.cosmetics,
+    onChange: (look, avatar) => send({ t: 'look', look, avatar }),
+    onBuy: (itemId) => send({ t: 'buy', item: itemId }),
+  });
+  S.editor = editor;
+  ui.openModal({
+    title: 'Vestuario',
+    size: 'lg',
+    content: editor,
+    actions: [{ label: 'Listo', variant: 'primary' }],
+    onClose: () => {
+      if (typeof editor.destroy === 'function') editor.destroy();
+      S.editor = null;
+    },
+  });
+}
+
+// ───────────────────────────── shop & bank ─────────────────────────────
+
+const THEME_SWATCH = { emerald: '#186f50', crimson: '#861c2e', royal: '#1f50ad', purple: '#5a24a6', midnight: '#293041' };
+
+function openShop() {
+  const eco = S.room.economy;
+  const cat = S.catalog;
+  const my = me();
+  let modal = null;
+  const close = () => modal && modal.close();
+  const buy = (item) => () => {
+    send({ t: 'buy', item });
+    close();
+  };
+  const section = (title, hint, ...rows) =>
+    el('section', { class: 'shop__section' }, el('h4', { class: 'shop__title' }, title), hint ? el('p', { class: 'shop__hint' }, hint) : null, ...rows);
+  const priceButton = (price, onClick, disabled) =>
+    createButton(formatChips(price), { variant: 'primary', size: 'sm', icon: 'chip', disabled: disabled || my.balance < price, onClick });
+  const row = (lead, name, note, control) =>
+    el('div', { class: 'shop__row' }, lead, el('div', { class: 'shop__text' }, el('strong', null, name), note ? el('small', null, note) : null), control);
+  const inDebt = my.debt > 0;
+
+  const titles = cat.titles.map((item) => {
+    const owned = eco.owned.includes(item.id);
+    const control = !owned
+      ? priceButton(item.price, buy(item.id), inDebt)
+      : createButton(eco.title === item.id ? 'Quitar' : 'Usar', {
+          variant: 'secondary',
+          size: 'sm',
+          onClick: () => {
+            send({ t: 'equip', item: eco.title === item.id ? null : item.id });
+            close();
+          },
+        });
+    return row(null, item.name, owned ? 'Ya es tuyo' : 'Título que todos ven junto a tu nombre', control);
+  });
+
+  const themes = cat.themes.map((item) => {
+    const key = item.id.split(':')[1];
+    const owned = item.price === 0 || eco.owned.includes(item.id);
+    const control = !owned
+      ? priceButton(item.price, buy(item.id), inDebt)
+      : createButton(eco.theme === item.id ? 'Puesto' : 'Usar', {
+          variant: 'secondary',
+          size: 'sm',
+          disabled: eco.theme === item.id,
+          onClick: () => {
+            send({ t: 'equip', item: item.id });
+            close();
+          },
+        });
+    return row(el('span', { class: 'shop__swatch', style: { background: THEME_SWATCH[key] || '#186f50' } }), item.name, 'El color de tus mesas', control);
+  });
+
+  const vipOwned = eco.owned.includes(cat.vip.id);
+  const vip = row(
+    el('span', { class: 'shop__glyph' }, cat.vipEmotes[0]),
+    cat.vip.name,
+    cat.vipEmotes.join(' '),
+    vipOwned ? el('span', { class: 'shop__owned' }, 'Tuyo') : priceButton(cat.vip.price, buy(cat.vip.id), inDebt)
+  );
+
+  const rain = row(
+    el('span', { class: 'shop__glyph' }, '💸'),
+    'Lluvia de fichas',
+    `Hacé llover: ${formatChips(cat.rain.each)} fichas para cada compañero`,
+    priceButton(cat.rain.cost, () => {
+      send({ t: 'rain' });
+      close();
+    })
+  );
+  const tips = row(
+    el('span', { class: 'shop__glyph' }, '🎩'),
+    'Propina para Don Fortunato',
+    'No cambia tu suerte. Pero se pone contento.',
+    el(
+      'div',
+      { class: 'shop__group' },
+      ...cat.tips.map((amount) =>
+        priceButton(amount, () => {
+          send({ t: 'tip', amount });
+          close();
+        })
+      )
+    )
+  );
+  const throws = row(
+    el('span', { class: 'shop__glyph' }, '🎯'),
+    'Tirarle algo a Don Fortunato',
+    'Para tirarle a un compañero, tocá su avatar.',
+    el(
+      'div',
+      { class: 'shop__group' },
+      ...cat.throwables.map((item) =>
+        el(
+          'button',
+          {
+            class: 'throw-btn',
+            type: 'button',
+            title: item.name,
+            disabled: my.balance < item.price,
+            onClick: () => {
+              send({ t: 'throw', to: 'dealer', item: item.id });
+              close();
+            },
+          },
+          el('span', null, THROW_GLYPH[item.id] || '❓'),
+          el('small', null, formatChips(item.price))
+        )
+      )
+    )
+  );
+
+  modal = ui.openModal({
+    title: 'Tienda del club',
+    size: 'lg',
+    content: el(
+      'div',
+      { class: 'shop' },
+      el(
+        'p',
+        { class: 'shop__balance' },
+        'Tus fichas: ',
+        el('strong', null, formatChips(my.balance)),
+        inDebt ? el('span', { class: 'is-down' }, ' · con deuda no se compran títulos, paños ni accesorios') : null
+      ),
+      section(
+        'Vestuario',
+        'Sombreros, lentes, mascotas y auras para tu avatar.',
+        row(
+          el('span', { class: 'shop__glyph' }, '🧢'),
+          'Ropa y accesorios',
+          'Probátelos antes de comprar',
+          createButton('Abrir vestuario', {
+            variant: 'secondary',
+            size: 'sm',
+            onClick: () => {
+              close();
+              openWardrobe();
+            },
+          })
+        )
+      ),
+      section('Para lucirse', null, rain, tips, throws),
+      section('Títulos', null, ...titles),
+      section('Paños', null, ...themes),
+      section('Emotes', null, vip)
+    ),
+    actions: [{ label: 'Cerrar', variant: 'ghost' }],
+  });
+}
+
+function openBank() {
+  const my = me();
+  const cat = S.catalog;
+  const limit = S.room.economy.loanLimit;
+  const room = Math.max(0, Math.floor((limit - my.debt) / (1 + cat.loanInterest)));
+  const input = el('input', { class: 'input', type: 'number', min: cat.loanMin, step: 50, value: Math.min(500, Math.max(cat.loanMin, room)) });
+  ui.openModal({
+    title: 'El prestamista',
+    size: 'sm',
+    content: el(
+      'div',
+      { class: 'bank' },
+      el(
+        'p',
+        null,
+        `"Yo le presto, cómo no. Me devuelve un ${Math.round(cat.loanInterest * 100)}% más, y hasta que pague me quedo con el ${Math.round(cat.garnish * 100)}% de lo que gane."`
+      ),
+      el('p', { class: 'bank__row' }, 'Deuda actual', el('strong', { class: my.debt > 0 ? 'is-down' : '' }, formatChips(my.debt))),
+      el('p', { class: 'bank__row' }, 'Límite de deuda (sube con tu nivel)', el('strong', null, formatChips(limit))),
+      el('p', { class: 'bank__row' }, 'Podés pedir hasta', el('strong', null, formatChips(room))),
+      el('label', { class: 'welcome__label' }, 'Monto', input),
+      el('p', { class: 'bank__note' }, 'Con deuda no podés comprar en la tienda. Y todos ven cuánto debés.')
+    ),
+    actions: [
+      { label: 'Cerrar', variant: 'ghost' },
+      {
+        label: 'Pagar deuda',
+        variant: 'secondary',
+        onClick: () => {
+          if (my.debt > 0) send({ t: 'repay', amount: Math.max(1, Math.floor(Number(input.value)) || my.debt) });
+        },
+      },
+      { label: 'Pedir préstamo', variant: 'primary', onClick: () => send({ t: 'loan', amount: Math.floor(Number(input.value)) }) },
+    ],
+  });
+}
+
+// ───────────────────────────── rescue minigame ─────────────────────────────
 
 const SUITS = ['♠', '♥', '♦', '♣'];
 function rescueGame(m) {
@@ -556,7 +1262,7 @@ function rescueGame(m) {
   const pad = el('div', { class: 'rescue__pad' });
   const answer = [];
   let modal = null;
-  let timers = [];
+  const timers = [];
   SUITS.forEach((suit, i) => {
     pad.append(
       el(
@@ -607,70 +1313,66 @@ function rescueGame(m) {
     setTimeout(() => {
       show.textContent = '¡Tu turno!';
       show.className = 'rescue__show';
-      pad.querySelectorAll('button').forEach((b) => (b.disabled = false));
+      pad.querySelectorAll('button').forEach((b) => {
+        b.disabled = false;
+      });
     }, 900 + m.sequence.length * m.showMs)
   );
 }
 
-function bankModal() {
-  const my = me();
-  const eco = S.room.economy;
-  const room = Math.max(0, Math.floor((eco.loanLimit - my.debt) / (1 + eco.loanInterest)));
-  const input = el('input', { class: 'input', type: 'number', min: eco.loanMin, step: 50, value: Math.min(500, Math.max(eco.loanMin, room)) });
-  ui.openModal({
-    title: 'El prestamista',
-    size: 'sm',
-    content: el(
-      'div',
-      { class: 'bank' },
-      el('p', null, `"Yo le presto, cómo no. Me devuelve un ${Math.round(eco.loanInterest * 100)}% más, y hasta que pague me quedo con el ${Math.round(eco.garnish * 100)}% de lo que gane."`),
-      el('p', { class: 'bank__row' }, 'Deuda actual', el('strong', { class: my.debt > 0 ? 'is-down' : '' }, formatChips(my.debt))),
-      el('p', { class: 'bank__row' }, 'Límite de deuda (sube con tu nivel)', el('strong', null, formatChips(eco.loanLimit))),
-      el('p', { class: 'bank__row' }, 'Podés pedir hasta', el('strong', null, formatChips(room))),
-      el('label', { class: 'welcome__label' }, 'Monto', input),
-      el('p', { class: 'bank__note' }, 'Con deuda no podés comprar en la tienda. Y todos ven cuánto debés.')
-    ),
-    actions: [
-      { label: 'Cerrar', variant: 'ghost' },
-      {
-        label: 'Pagar deuda',
-        variant: 'secondary',
-        onClick: () => {
-          if (my.debt > 0) send({ t: 'repay', amount: Math.max(1, Math.floor(Number(input.value)) || my.debt) });
-        },
-      },
-      { label: 'Pedir préstamo', variant: 'primary', onClick: () => send({ t: 'loan', amount: Math.floor(Number(input.value)) }) },
-    ],
-  });
+// ───────────────────────────── effects ─────────────────────────────
+
+function showEmote(m) {
+  audio.play('notify');
+  parade.emote(m.from, m.emote);
+  const node = el(
+    'div',
+    { class: 'emote-pop', style: { left: `${12 + Math.random() * 60}%` } },
+    el('span', { class: 'emote-pop__face' }, m.emote),
+    el('span', { class: 'emote-pop__name', style: { background: ui.avatarColor(m.avatar) } }, m.name)
+  );
+  document.body.append(node);
+  setTimeout(() => node.remove(), 2600);
+  if (Math.random() < 0.2) mascot.say('emote');
 }
 
-function shopModal() {
-  const eco = S.room.economy;
-  const my = me();
-  const list = el('div', { class: 'shop' });
-  const row = (item, note) => {
-    const owned = eco.owned.includes(item.id);
-    const equipped = eco.equipped === item.id;
-    let button;
-    if (!owned) {
-      button = createButton(`${formatChips(item.price)}`, { variant: 'primary', size: 'sm', icon: 'chip', disabled: my.balance < item.price || my.debt > 0, onClick: () => { send({ t: 'buy', item: item.id }); handle.close(); } });
-    } else if (item.id === eco.vip.id) {
-      button = el('span', { class: 'shop__owned' }, 'Tuyo');
-    } else {
-      button = createButton(equipped ? 'Puesto' : 'Usar', { variant: 'secondary', size: 'sm', disabled: equipped, onClick: () => { send({ t: 'equip', item: item.id }); handle.close(); } });
-    }
-    list.append(el('div', { class: 'shop__row' }, el('div', null, el('strong', null, item.name), el('small', null, note)), button));
-  };
-  for (const title of eco.titles) row(title, 'Título que todos ven junto a tu nombre');
-  row(eco.vip, `Emotes exclusivos: ${eco.vipEmotes.join(' ')}`);
-  const handle = ui.openModal({
-    title: 'Tienda del club',
-    size: 'md',
-    content: el('div', null, el('p', { class: 'bank__note' }, my.debt > 0 ? 'Tenés deuda: primero pagale al prestamista.' : 'Gastá tus fichas en algo que se note.'), list),
-    actions: [{ label: 'Cerrar', variant: 'ghost' }],
+function showThrow(m) {
+  const toDealer = m.to === 'dealer';
+  audio.play('notify');
+  parade.throwAt(m.from, m.to, m.item, {
+    target: toDealer ? mascot : undefined,
+    onImpact: () => {
+      audio.play(m.item === 'rose' ? 'win' : 'lose');
+      if (toDealer) mascot.hit(m.item);
+    },
   });
+  if (S.room && m.to === S.room.you) toast(`${m.name} te tiró: ${THROW_GLYPH[m.item] || ''}`, { kind: m.item === 'rose' ? 'win' : 'info' });
+}
+
+function showRain(m) {
+  audio.play('chips');
+  mascot.say('rain');
+  toast(S.room && m.from === S.room.you ? '¡Hiciste llover fichas sobre el equipo!' : `¡${m.name} hizo llover fichas! +${formatChips(m.each)} para vos.`, {
+    kind: 'win',
+    duration: 5000,
+  });
+  if (S.room) for (const p of S.room.players) if (p.id !== m.from) parade.cheer(p.id);
+  if (ui.prefersReducedMotion()) return;
+  const layer = el('div', { class: 'rain' });
+  const values = [5, 25, 100, 500, 1000];
+  for (let i = 0; i < 44; i += 1) {
+    const chip = ui.createChip(values[i % values.length], { size: 'sm', decorative: true });
+    chip.classList.add('rain__chip');
+    chip.style.left = `${Math.random() * 100}%`;
+    chip.style.animationDelay = `${Math.random() * 1.4}s`;
+    chip.style.animationDuration = `${1.6 + Math.random() * 1.4}s`;
+    layer.append(chip);
+  }
+  document.body.append(layer);
+  setTimeout(() => layer.remove(), 4600);
 }
 
 document.addEventListener('pointerdown', () => audio.unlock(), { once: true });
 renderWelcome();
+syncParade();
 connect();

@@ -16,6 +16,7 @@ const DEFAULTS = Object.freeze({
   RESCUE_COOLDOWN_MS: 30_000,
   RESCUE_MINIGAME: 1, // the rescue must be earned by repeating a sequence (tests switch it off)
   GIFT_COOLDOWN_MS: 1_000,
+  SAVE_INTERVAL_MS: 1_500, // a changed profile is sent to its browser at most this often (0 = never)
 
   // Rooms
   MAX_PLAYERS: 8, // members present in a room at the same time

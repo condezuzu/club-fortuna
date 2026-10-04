@@ -1,5 +1,7 @@
 'use strict';
 
+const { defineGame } = require('./_define');
+
 /**
  * Tragamonedas — three reels and a progressive jackpot fed by the whole team.
  *
@@ -42,8 +44,9 @@ function payoutOf(reels, bet) {
   return 0;
 }
 
-function create(ctx) {
-  let jackpot = JACKPOT_SEED;
+function createWith(meta, ctx) {
+  const seed = meta.jackpotSeed || JACKPOT_SEED;
+  let jackpot = seed;
   const pending = new Map(); // playerId -> bet while the reels turn
   const last = new Map(); // playerId -> last finished spin
   const recent = [];
@@ -71,7 +74,7 @@ function create(ctx) {
     const hitJackpot = reels.every((symbol) => symbol === 'seven');
     if (hitJackpot) {
       win += jackpot;
-      jackpot = JACKPOT_SEED;
+      jackpot = seed;
     }
 
     pending.set(playerId, bet);
@@ -138,4 +141,4 @@ function create(ctx) {
   };
 }
 
-module.exports = { meta, create, internals: { SYMBOLS, payoutOf, SPIN_MS, JACKPOT_SEED } };
+module.exports = defineGame(meta, createWith, { internals: { SYMBOLS, payoutOf, SPIN_MS, JACKPOT_SEED } });

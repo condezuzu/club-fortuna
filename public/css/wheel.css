@@ -1,0 +1,58 @@
+/* ==========================================================================
+   Club Fortuna — roulette wheel (js/wheel.js)
+   --------------------------------------------------------------------------
+   The wheel is a square that fills its container's width (160 px to 520 px
+   is the comfortable range). wheel.js paints it on a canvas and reads the
+   colours and the numeral face declared here. Requires tokens.css.
+   ========================================================================== */
+
+.wheel {
+  /* What wheel.js paints with. Any CSS colour works; the brass is the
+     --gold-50 .. --gold-900 ramp from tokens.css. */
+  --wheel-wood: #4b1c13;                          /* mahogany: bowl and cone */
+  --wheel-track: #1e0e0b;                         /* ball track */
+  --wheel-red: var(--card-red, #b3202f);
+  --wheel-black: #17141e;
+  --wheel-green: #178058;
+  --wheel-numeral: var(--ivory-100, #faf4e3);
+  --wheel-ball: var(--ivory-50, #fffdf6);
+  --wheel-glow: var(--gold-200, #f3dfa2);         /* winning pocket */
+
+  /* Rendered width; wheel.js keeps it up to date. Scales the cast shadow. */
+  --wheel-size: 20rem;
+
+  position: relative;
+  display: block;
+  width: 100%;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  box-shadow:
+    0 calc(var(--wheel-size) * 0.012) calc(var(--wheel-size) * 0.03) rgba(0, 0, 0, 0.55),
+    0 calc(var(--wheel-size) * 0.05) calc(var(--wheel-size) * 0.12) rgba(0, 0, 0, 0.55);
+
+  /* The numerals: face, weight and lining figures are taken from here. */
+  font-family: var(--font-numeral, "Playfair Display", "Bodoni MT", "Didot", "Bodoni 72", "Times New Roman", Times, serif);
+  font-weight: 700;
+  font-variant-numeric: lining-nums;
+  font-feature-settings: "lnum" 1;
+
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.wheel__canvas {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  border-radius: 50%;
+  object-fit: contain; /* stays round if a layout forces the box off-square */
+}
+
+/* Off-screen sprite. It lives in the document only so that the page's font
+   features reach the numerals painted on it. */
+.wheel__ink {
+  display: none;
+}

@@ -7,14 +7,23 @@ const IDS = Object.keys(GLYPH);
 export default {
   id: 'slots',
   icon: 'crown',
+  art(ui) {
+    return ui.el('div', { class: 'art-slots' }, ...[0, 1, 2].map(() => ui.el('span', null, GLYPH.seven)));
+  },
   mount(root, api) {
     const { el, clear, formatChips, createButton } = api.ui;
+    const dealer = createDealer(api);
+    const values = api.meta.chips || [5, 25, 100, 500];
     let state = null;
     let animating = false;
     let timers = [];
     let shownJackpot = 0;
+    // What the reels show is decided here, by the spin that was animated on this screen. The server
+    // view only fills them in when nothing was animated yet (first visit, reconnect): its `last`
+    // still describes the PREVIOUS spin while the current one is being paid.
+    let localReels = null;
+    let run = 0;
 
-    const dealer = createDealer(api);
     const jackpotEl = el('strong', { class: 'sl__jackpot-value' }, '…');
     const reels = [0, 1, 2].map(() => el('div', { class: 'sl__reel' }, el('span', { class: 'sl__glyph' }, GLYPH.seven)));
     const glyphs = reels.map((reel) => reel.firstChild);
@@ -22,7 +31,7 @@ export default {
     const msgEl = el('p', { class: 'sl__msg' }, 'Elegí tu apuesta y girá.');
     const payEl = el('div', { class: 'sl__pay' });
     const recentEl = el('div', { class: 'sl__recent' });
-    const tray = api.ui.createChipTray({ values: [5, 25, 100, 500], value: 25, onChange() {}, getBalance: () => api.me().balance });
+    const tray = api.ui.createChipTray({ values, value: values[1], onChange() {}, getBalance: () => api.me().balance });
     const spinBtn = createButton('GIRAR', { variant: 'primary', size: 'lg', sound: false, onClick: spin });
     spinBtn.classList.add('sl__spin');
     const machine = el(
@@ -38,7 +47,6 @@ export default {
       el(
         'div',
         { class: 'sl' },
-        dealer,
         machine,
         el('div', { class: 'sl__controls' }, tray, spinBtn),
         el(
@@ -51,8 +59,8 @@ export default {
     );
 
     function spin() {
-      if (animating) return;
-      api.audio.play('chips');
+      if (animating || (state && state.spinning)) return;
+      api.fx.bet(tray, machine, tray.value);
       api.send({ type: 'spin', bet: tray.value });
     }
     const onKey = (event) => {
@@ -68,9 +76,24 @@ export default {
       timers.push(t);
       return t;
     }
+    function stopTimers() {
+      timers.forEach((t) => {
+        clearTimeout(t);
+        clearInterval(t);
+      });
+      timers = [];
+    }
+
+    function showReels(ids) {
+      ids.forEach((id, i) => {
+        glyphs[i].textContent = GLYPH[id] || '?';
+      });
+    }
 
     function finish(payload) {
       animating = false;
+      localReels = payload.reels;
+      showReels(payload.reels);
       machine.classList.remove('is-hot', 'is-spinning');
       const near = payload.win === 0 && (payload.reels[0] === payload.reels[1] || payload.reels[1] === payload.reels[2]);
       if (payload.jackpot) {
@@ -80,6 +103,7 @@ export default {
         api.ui.celebrate({ kind: 'jackpot', amount: payload.win });
         msgEl.textContent = `¡¡POZO!! +${formatChips(payload.win)} fichas`;
         dealer.say('jackpot');
+        api.fx.pay(machine, payload.win);
       } else if (payload.win > 0) {
         const big = payload.win >= payload.bet * 25;
         machine.classList.add('is-winning');
@@ -90,6 +114,7 @@ export default {
         api.ui.showBanner(machine, { title: `+${formatChips(payload.win)}`, subtitle: big ? '¡Premio gordo!' : 'fichas', kind: 'win', duration: 1600 });
         msgEl.textContent = `¡Ganaste ${formatChips(payload.win)} fichas!`;
         dealer.say(big ? 'bigwin' : 'win');
+        api.fx.pay(machine, payload.win);
       } else if (near) {
         machine.classList.add('is-near');
         api.audio.play('lose');
@@ -97,16 +122,19 @@ export default {
         dealer.say('near');
       } else {
         msgEl.textContent = 'Nada esta vez. ¡Otra!';
-        if (Math.random() < 0.5) dealer.say('lose');
+        if (Math.random() < 0.4) dealer.say('lose');
       }
       later(() => machine.classList.remove('is-winning', 'is-near', 'is-jackpot'), 2200);
       if (state) update(state);
     }
 
     function animate(payload) {
+      stopTimers(); // nothing left over from a previous spin may touch the reels
+      run += 1;
+      const mine = run;
       animating = true;
       spinBtn.disabled = true;
-      machine.classList.remove('is-winning', 'is-near', 'is-jackpot');
+      machine.classList.remove('is-winning', 'is-near', 'is-jackpot', 'is-hot');
       machine.classList.add('is-spinning');
       reels.forEach((reel) => {
         reel.classList.remove('is-win', 'is-stop');
@@ -115,6 +143,7 @@ export default {
       msgEl.textContent = 'Girando…';
       const stopped = [false, false, false];
       const roll = setInterval(() => {
+        if (mine !== run) return;
         glyphs.forEach((glyph, i) => {
           if (!stopped[i]) glyph.textContent = GLYPH[IDS[Math.floor(Math.random() * IDS.length)]];
         });
@@ -124,13 +153,14 @@ export default {
       const stops = hot ? [0.3, 0.48, 0.97] : [0.3, 0.48, 0.66];
       let tickDelay = 110;
       const tick = () => {
-        if (!animating) return;
+        if (!animating || mine !== run) return;
         api.audio.play('tick');
         later(tick, tickDelay);
       };
       tick();
       stops.forEach((at, i) => {
         later(() => {
+          if (mine !== run) return;
           stopped[i] = true;
           glyphs[i].textContent = GLYPH[payload.reels[i]];
           reels[i].classList.remove('is-rolling');
@@ -163,7 +193,7 @@ export default {
       }
       spinBtn.disabled = s.spinning || animating;
       tray.refresh();
-      if (!animating && s.you.last) s.you.last.reels.forEach((id, i) => (glyphs[i].textContent = GLYPH[id]));
+      if (!animating && !localReels && !s.spinning && s.you.last) showReels(s.you.last.reels);
 
       clear(payEl);
       for (const row of s.paytable.slice().reverse()) {
@@ -198,11 +228,8 @@ export default {
       event,
       destroy() {
         document.removeEventListener('keydown', onKey);
-        timers.forEach((t) => {
-          clearTimeout(t);
-          clearInterval(t);
-        });
-        timers = [];
+        stopTimers();
+        run += 1;
         animating = false;
         dealer.destroy();
       },

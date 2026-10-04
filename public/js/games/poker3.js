@@ -6,24 +6,51 @@ const RESULT = { win: 'Gana', lose: 'Pierde', push: 'Empate', fold: 'Se retiró'
 export default {
   id: 'poker3',
   icon: 'cards',
+  art(ui) {
+    return ui.el(
+      'div',
+      { class: 'art-cards art-cards--three' },
+      ui.createCard({ rank: 'Q', suit: 'H' }, { size: 'sm' }),
+      ui.createCard({ rank: 'K', suit: 'H' }, { size: 'sm' }),
+      ui.createCard({ rank: 'A', suit: 'H' }, { size: 'sm' })
+    );
+  },
   mount(root, api) {
     const { el, clear, formatChips, createButton, createCard } = api.ui;
+    const dealer = createDealer(api);
+    const values = api.meta.chips || [5, 25, 100, 500];
     let state = null;
     let seen = {};
     let timers = [];
 
-    const dealer = createDealer(api);
     const statusEl = el('div', { class: 'bj__status' });
     const dealerHand = api.ui.createHand({ variant: 'spread' });
     const dealerLabel = el('span', { class: 'bj__total' });
     const handsEl = el('div', { class: 'bj__hands' });
 
-    const tray = api.ui.createChipTray({ values: [5, 25, 100, 500], value: 25, onChange() {}, getBalance: () => api.me().balance });
-    const betBtn = createButton('Apostar', { variant: 'secondary', icon: 'plus', onClick: () => api.send({ type: 'bet', amount: tray.value }) });
+    const tray = api.ui.createChipTray({ values, value: values[1], onChange() {}, getBalance: () => api.me().balance });
+    const betBtn = createButton('Apostar', {
+      variant: 'secondary',
+      icon: 'plus',
+      sound: false,
+      onClick: () => {
+        api.fx.bet(tray, handsEl.querySelector('.bj__seat.is-me') || handsEl, tray.value);
+        api.send({ type: 'bet', amount: tray.value });
+      },
+    });
     const clearBtn = createButton('Limpiar', { variant: 'ghost', icon: 'trash', onClick: () => api.send({ type: 'clear' }) });
     const dealBtn = createButton('Repartir', { variant: 'primary', onClick: () => api.send({ type: 'deal' }) });
     const betting = el('div', { class: 'bj__controls' }, tray, betBtn, clearBtn, dealBtn);
-    const playBtn = createButton('Jugar', { variant: 'primary', size: 'lg', onClick: () => api.send({ type: 'play' }) });
+    const playBtn = createButton('Jugar', {
+      variant: 'primary',
+      size: 'lg',
+      sound: false,
+      onClick: () => {
+        const mine = state && state.hands.find((h) => h.id === api.me().id);
+        if (mine) api.fx.bet(playBtn, handsEl.querySelector('.bj__seat.is-me') || handsEl, mine.ante);
+        api.send({ type: 'play' });
+      },
+    });
     const foldBtn = createButton('Retirarse', { variant: 'danger', size: 'lg', onClick: () => api.send({ type: 'fold' }) });
     const deciding = el('div', { class: 'bj__controls' }, playBtn, foldBtn);
     const rules = el(
@@ -36,7 +63,6 @@ export default {
       el(
         'div',
         { class: 'bj' },
-        dealer,
         el(
           'div',
           { class: 'bj__table felt' },
@@ -107,16 +133,19 @@ export default {
         seat.className = `bj__seat${h.id === myId ? ' is-me' : ''}${h.result ? ` is-${h.result}` : ''}`;
         clear(seat.info);
         if (h.betting) {
-          seat.info.append(api.ui.createChipStack(h.amount, { size: 'sm', color: h.avatar }), el('span', { class: 'bj__who' }, h.name));
+          seat.info.append(
+            el('div', { class: 'bj__circle' }, api.ui.createChipStack(h.amount, { size: 'sm', color: h.avatar })),
+            el('span', { class: 'bj__who' }, h.name)
+          );
         } else {
           renderCards(seat.hand, h.id, h.cards);
           const net = h.payout - h.ante - h.play;
           const label = h.result ? RESULT[h.result] : h.decision === 'play' ? 'Juega' : h.decision === 'fold' ? 'Se retiró' : '';
           seat.info.append(
             el('span', { class: 'bj__who' }, h.hand ? `${h.name} · ${h.hand}` : h.name),
-            el('span', { class: 'bj__bet' }, `Apuesta ${formatChips(h.ante + h.play)}`),
-            label ? el('span', { class: 'bj__badge' }, h.result ? `${label} ${net > 0 ? '+' : ''}${formatChips(net)}` : label) : null
+            el('div', { class: 'bj__circle bj__circle--sm' }, api.ui.createChipStack(h.ante + h.play, { size: 'sm', color: h.avatar }))
           );
+          if (label) seat.info.append(el('span', { class: 'bj__badge' }, h.result ? `${label} ${net > 0 ? '+' : ''}${formatChips(net)}` : label));
         }
       }
       for (const [key, node] of slots) if (!keys.has(key)) node.remove();
@@ -134,17 +163,21 @@ export default {
       if (name !== 'result') return;
       const mine = payload.hands.find((h) => h.id === api.me().id);
       if (!mine) return;
+      const from = handsEl.querySelector('.bj__seat.is-me') || handsEl;
       if (mine.result === 'fold') {
         dealer.say('fold');
         api.audio.play('lose');
+        api.fx.take(from, -mine.net);
       } else if (mine.net > 0) {
         api.audio.play(mine.net >= 500 ? 'bigwin' : 'win');
         dealer.say(mine.net >= 500 ? 'bigwin' : 'win');
         api.ui.showBanner(root, { title: `+${formatChips(mine.net)}`, subtitle: RESULT[mine.result], kind: 'win' });
+        api.fx.pay(from, mine.net);
       } else if (mine.net < 0) {
         api.audio.play('lose');
         dealer.say('lose');
         api.ui.showBanner(root, { title: 'Gana la casa', subtitle: `${formatChips(mine.net)} fichas`, kind: 'lose' });
+        api.fx.take(from, -mine.net);
       } else {
         dealer.say('push');
       }

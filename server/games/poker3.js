@@ -1,5 +1,7 @@
 'use strict';
 
+const { defineGame } = require('./_define');
+
 /**
  * Póker de 3 cartas — everybody plays their own hand against the dealer.
  *
@@ -57,7 +59,7 @@ function compare(a, b) {
   return 0;
 }
 
-function create(ctx) {
+function createWith(meta, ctx) {
   let phase = 'betting';
   let deadline = null;
   let timer = null;
@@ -268,4 +270,4 @@ function create(ctx) {
   };
 }
 
-module.exports = { meta, create, internals: { score, compare, HAND_NAMES } };
+module.exports = defineGame(meta, createWith, { internals: { score, compare, HAND_NAMES } });

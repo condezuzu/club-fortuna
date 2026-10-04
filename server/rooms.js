@@ -56,6 +56,67 @@ function normalizeRoomCode(value) {
 
 const economy = require('./economy');
 const nodeCrypto = require('node:crypto');
+const { createProfile } = require('./profile');
+
+/**
+ * A room's record of one player. The wallet and everything persistent live in
+ * the player's profile (owned by the Hub, carried from room to room and saved
+ * in the browser); the record adds what belongs to this room: buy-ins, seat,
+ * cooldowns and timers.
+ *
+ * `frozen` is the contribution to the team profit of a player who left:
+ * balance - buyIns at that moment, plus anything this room paid into the wallet
+ * afterwards. What the player does elsewhere must not move this room's goal.
+ */
+function makeRecord(profile) {
+  const record = {
+    id: profile.id,
+    profile,
+    name: profile.name,
+    avatar: profile.avatar,
+    buyIns: profile.balance,
+    frozen: 0,
+    table: null,
+    present: false,
+    connected: false,
+    conn: null,
+    rescueAt: 0, // epoch ms from which the next rescue is allowed
+    giftAt: 0,
+    emoteAt: 0,
+    throwAt: 0,
+    challenge: null,
+    seatTimer: null,
+    absentTimer: null,
+    needsRoom: false,
+  };
+  Object.defineProperties(record, {
+    balance: {
+      enumerable: true,
+      get: () => record.profile.balance,
+      set: (value) => {
+        if (!record.present) record.frozen += value - record.profile.balance;
+        record.profile.balance = value;
+      },
+    },
+    debt: {
+      enumerable: true,
+      get: () => record.profile.debt,
+      set: (value) => {
+        record.profile.debt = value;
+      },
+    },
+    title: {
+      enumerable: true,
+      get: () => record.profile.title,
+      set: (value) => {
+        record.profile.title = value;
+      },
+    },
+    stats: { enumerable: true, get: () => record.profile.stats },
+    owned: { enumerable: true, get: () => record.profile.owned },
+  });
+  return record;
+}
 
 class Room {
   /**
@@ -71,7 +132,7 @@ class Room {
    * @param {(room: Room, playerId: string) => void} [options.onMemberDropped]
    *        called when a member is removed by the room itself (absent for too long)
    */
-  constructor({ code, registry, clock, rng, config, timeScale, log, onDestroyed, onMemberDropped }) {
+  constructor({ code, registry, clock, rng, config, timeScale, log, onDestroyed, onMemberDropped, onFlushed }) {
     this.code = code;
     this.registry = registry;
     this.clock = clock;
@@ -81,6 +142,7 @@ class Room {
     this.log = log;
     this.onDestroyed = onDestroyed || (() => {});
     this.onMemberDropped = onMemberDropped || (() => {});
+    this.onFlushed = onFlushed || (() => {});
 
     /** @type {Map<string, any>} everybody who has ever been in the room, in join order */
     this.players = new Map();
@@ -138,9 +200,14 @@ class Room {
   profit() {
     let profit = this.archivedNet;
     for (const player of this.players.values()) {
-      profit += player.balance + this.stakeOf(player.id) - player.buyIns;
+      profit += this._netOf(player, this.stakeOf(player.id));
     }
     return profit;
+  }
+
+  /** A player's contribution to the team profit. */
+  _netOf(player, stake) {
+    return player.present ? player.balance + stake - player.buyIns : player.frozen + stake;
   }
 
   // ──────────────────────────── membership ────────────────────────────
@@ -163,29 +230,22 @@ class Room {
     const returning = Boolean(player);
     if (!player) {
       this._makeRoomForRecord();
-      player = {
-        id: identity.id,
-        name: identity.name,
-        avatar: identity.avatar,
-        balance: this.config.START_BALANCE,
-        buyIns: this.config.START_BALANCE,
-        table: null,
-        present: false,
-        connected: false,
-        conn: null,
-        stats: emptyStats(),
-        rescueAt: 0, // epoch ms from which the next rescue is allowed
-        debt: 0,
-        owned: [],
-        title: null,
-        emoteAt: 0,
-        challenge: null,
-        giftAt: 0,
-        seatTimer: null,
-        absentTimer: null,
-        needsRoom: false,
-      };
+      player = makeRecord(
+        identity.profile ||
+          createProfile({
+            id: identity.id,
+            name: identity.name,
+            avatar: identity.avatar,
+            balance: this.config.START_BALANCE,
+          })
+      );
       this.players.set(player.id, player);
+    } else {
+      // Back in the room: the wallet may have changed elsewhere (or been restored from a save into a new
+      // profile object); the contribution stays where it was.
+      if (identity.profile) player.profile = identity.profile;
+      player.buyIns = player.balance - player.frozen;
+      player.frozen = 0;
     }
     player.name = identity.name;
     player.avatar = identity.avatar;
@@ -210,6 +270,7 @@ class Room {
     if (!player || !player.present) return false;
     if (player.table) this.stand(id);
     this._clearPlayerTimers(player);
+    player.frozen = player.balance - player.buyIns;
     player.present = false;
     player.connected = false;
     player.conn = null;
@@ -269,6 +330,12 @@ class Room {
     if (player.table === gameId) {
       this.pushView(id); // already there: just show the table again
       return;
+    }
+    if (plugin.meta.minBalance && player.balance < plugin.meta.minBalance) {
+      throw new ClubError(
+        `El salón High Limit pide al menos ${formatChips(plugin.meta.minBalance)} fichas en la mano.`,
+        'high_limit'
+      );
     }
     if (player.table) this.stand(id);
 
@@ -376,7 +443,9 @@ class Room {
     if (now < from.giftAt) throw new ClubError('Esperá un momento antes de regalar de nuevo.', 'gift_cooldown');
     from.giftAt = now + this.config.GIFT_COOLDOWN_MS;
     from.balance -= amount;
+    from.buyIns -= amount;
     to.balance += amount;
+    to.buyIns += amount;
     this.addFeed('gift', `${from.name} le regaló ${chipsText(amount)} a ${to.name}`, {
       playerId: from.id,
       targetId: to.id,
@@ -500,18 +569,26 @@ class Room {
     if (pay > 0) this._payDebt(player, pay);
   }
 
-  /** Buy a title or the VIP emote pack. Chips spent leave the game for good. */
+  /** Chips spent outside the tables leave the game without touching the team profit. */
+  _spend(player, amount) {
+    player.balance -= amount;
+    player.buyIns -= amount;
+  }
+
+  /** Buy anything from the shop: a title, a cosmetic, a theme or the VIP emote pack. */
   buy(id, itemId) {
     const player = this._member(id);
-    const item = itemId === economy.VIP.id ? economy.VIP : economy.TITLES.find((title) => title.id === itemId);
-    if (!item) throw new ClubError('Eso no está en la tienda.', 'bad_item');
+    const item = typeof itemId === 'string' ? economy.ITEMS.get(itemId) : undefined;
+    if (!item || item.price <= 0) throw new ClubError('Eso no está en la tienda.', 'bad_item');
     if (player.owned.includes(item.id)) throw new ClubError('Eso ya es tuyo.', 'owned');
     if (player.debt > 0) throw new ClubError('Primero pagale al prestamista. Después los lujos.', 'in_debt');
     if (player.balance < item.price) throw new ClubError('No te alcanzan las fichas.', 'insufficient');
-    player.balance -= item.price;
-    player.buyIns -= item.price;
+    this._spend(player, item.price);
     player.owned.push(item.id);
-    if (item !== economy.VIP) player.title = item.id;
+    if (item.kind === 'title') player.title = item.id;
+    else if (item.kind === 'theme') player.profile.theme = item.id;
+    else if (item.kind === 'cosmetic') player.profile.look = { ...player.profile.look, [item.slot]: item.key };
+    player.needsRoom = true;
     this.addFeed('shop', `${player.name} compró "${item.name}" por ${formatChips(item.price)} fichas`, {
       playerId: id,
       amount: item.price,
@@ -519,13 +596,129 @@ class Room {
     this.touch();
   }
 
+  /** Wear an owned title (null takes it off) or switch to an owned theme. */
   equip(id, itemId) {
     const player = this._member(id);
-    if (itemId !== null && !(player.owned.includes(itemId) && economy.TITLES.some((title) => title.id === itemId))) {
-      throw new ClubError('Ese título no es tuyo.', 'bad_item');
+    if (itemId === null) {
+      player.title = null;
+    } else {
+      const item = economy.ITEMS.get(itemId);
+      const owned = item && (item.price === 0 || player.owned.includes(item.id));
+      if (!owned || (item.kind !== 'title' && item.kind !== 'theme')) throw new ClubError('Eso no es tuyo.', 'bad_item');
+      if (item.kind === 'title') player.title = item.id;
+      else player.profile.theme = item.id;
     }
-    player.title = itemId;
+    player.needsRoom = true; // the theme lives in the personal part of the snapshot
     this.touch();
+  }
+
+  /** Throw something at a teammate or at the dealer. Pure fun, costs chips. */
+  throwItem(id, toId, itemId) {
+    const player = this._member(id);
+    const item = economy.THROWABLES.find((entry) => entry.id === itemId);
+    if (!item) throw new ClubError('Eso no se puede tirar.', 'bad_item');
+    let toName = 'Don Fortunato';
+    if (toId !== 'dealer') {
+      const target = typeof toId === 'string' ? this.players.get(toId) : undefined;
+      if (!target || !target.present) throw new ClubError('Ese jugador no está en la sala.', 'bad_target');
+      if (target === player) throw new ClubError('¿A vos mismo? Mejor no.', 'bad_target');
+      toName = target.name;
+    }
+    if (player.balance < item.price) throw new ClubError('No te alcanzan las fichas.', 'insufficient');
+    const now = this.clock.now();
+    if (now < player.throwAt) throw new ClubError('Pará un poco la mano.', 'throw_cooldown');
+    player.throwAt = now + economy.THROW_COOLDOWN_MS;
+    this._spend(player, item.price);
+    this._broadcast({ t: 'throw', from: player.id, name: player.name, to: toId, toName, item: item.id });
+    this.touch();
+  }
+
+  /** "Lluvia de fichas": the big spender pays, every teammate collects. */
+  rain(id) {
+    const player = this._member(id);
+    const { cost, each } = economy.RAIN;
+    const others = [...this.players.values()].filter((other) => other.present && other !== player);
+    if (others.length === 0) throw new ClubError('No hay nadie más en la sala para mojar.', 'bad_target');
+    if (player.balance < cost) throw new ClubError('No te alcanzan las fichas.', 'insufficient');
+    this._spend(player, cost);
+    for (const other of others) {
+      other.balance += each;
+      other.buyIns += each;
+    }
+    this.addFeed('rain', `${player.name} hizo llover fichas: ${formatChips(each)} para cada uno`, {
+      playerId: id,
+      amount: cost,
+    });
+    this._broadcast({ t: 'rain', from: player.id, name: player.name, each });
+    this.touch();
+  }
+
+  /** A tip for the dealer. */
+  tip(id, amount) {
+    const player = this._member(id);
+    if (!Number.isSafeInteger(amount) || amount < 10 || amount > economy.TIP_MAX) {
+      throw new ClubError('Esa propina no es válida.', 'bad_amount');
+    }
+    if (player.balance < amount) throw new ClubError('No te alcanzan las fichas.', 'insufficient');
+    this._spend(player, amount);
+    player.profile.tips += amount;
+    this.addFeed('tip', `${player.name} le dejó ${formatChips(amount)} fichas de propina a Don Fortunato`, {
+      playerId: id,
+      amount,
+    });
+    this._broadcast({ t: 'tip', from: player.id, name: player.name, amount });
+    this.touch();
+  }
+
+  /** Pay (part of) a teammate's debt. */
+  repayFor(id, toId, amount) {
+    const player = this._member(id);
+    const target = typeof toId === 'string' ? this.players.get(toId) : undefined;
+    if (!target || !target.present || target === player) throw new ClubError('Ese jugador no está en la sala.', 'bad_target');
+    if (!Number.isSafeInteger(amount) || amount < 1) throw new ClubError('El pago no es válido.', 'bad_amount');
+    if (target.debt === 0) throw new ClubError(`${target.name} no le debe nada a nadie.`, 'no_debt');
+    const pay = Math.min(amount, target.debt, player.balance);
+    if (pay < 1) throw new ClubError('No tenés fichas para pagar.', 'insufficient');
+    this._spend(player, pay);
+    target.debt -= pay;
+    this.addFeed('debt', `${player.name} pagó ${formatChips(pay)} fichas de la deuda de ${target.name}`, {
+      playerId: id,
+      targetId: target.id,
+      amount: pay,
+    });
+    this.touch();
+  }
+
+  /** The public card of a teammate: stats and recent history. */
+  profileOf(id, targetId) {
+    this._member(id);
+    const target = typeof targetId === 'string' ? this.players.get(targetId) : undefined;
+    if (!target || !target.present) throw new ClubError('Ese jugador no está en la sala.', 'bad_target');
+    const level = economy.levelFor(target.stats.wagered);
+    return {
+      id: target.id,
+      name: target.name,
+      avatar: target.avatar,
+      look: target.profile.look,
+      level,
+      rank: economy.rankFor(level),
+      title: target.title ? (economy.ITEMS.get(target.title) || {}).name || null : null,
+      stats: { ...target.stats },
+      balance: target.balance,
+      peak: target.profile.peak,
+      debt: target.debt,
+      tips: target.profile.tips,
+      net: this._netOf(target, this.stakeOf(target.id)),
+      history: target.profile.history.slice(0, economy.HISTORY_MAX),
+    };
+  }
+
+  /** Every resolved bet: goes to the player's history, and a share of a net win to the debt. */
+  _settled(record, result, meta) {
+    const history = record.profile.history;
+    history.unshift({ t: this.clock.now(), g: meta.name, w: result.wagered, r: result.won });
+    if (history.length > economy.HISTORY_MAX) history.length = economy.HISTORY_MAX;
+    this._garnish(record, result.net);
   }
 
   /** Clash-style emote: flashes on everybody's screen. */
@@ -592,9 +785,14 @@ class Room {
     this._flushing = true;
     let celebration = null;
     try {
-      celebration = this._levelUp(profit);
+      celebration = this._levelUp(profit, stakes);
     } finally {
       this._flushing = false;
+    }
+    // After the quota bonus, so that it counts: the most each member was ever worth.
+    for (const player of this.players.values()) {
+      const worth = player.balance + (stakes.get(player.id) || 0) - player.debt;
+      if (worth > player.profile.peak) player.profile.peak = worth;
     }
 
     // 1. Room snapshot, skipped when nothing in it changed.
@@ -633,6 +831,8 @@ class Room {
 
     // 4. Team celebration.
     if (celebration) this._broadcast(celebration);
+
+    this.onFlushed(this);
   }
 
   /** Tear everything down: timers, tables, game instances. */
@@ -704,7 +904,7 @@ class Room {
     if (this.players.size < this.config.MAX_RECORDS) return;
     for (const [id, player] of this.players) {
       if (player.present || this.stakeOf(id) > 0) continue;
-      this.archivedNet += player.balance - player.buyIns;
+      this.archivedNet += player.frozen;
       this.players.delete(id);
       if (this.players.size < this.config.MAX_RECORDS) return;
     }
@@ -721,7 +921,7 @@ class Room {
       seated: () => table.seated.map((playerId) => this.players.get(playerId)).filter(Boolean),
       find: (playerId) => this.players.get(playerId) || null,
       touch: () => this.touch(),
-      settled: (record, net) => this._garnish(record, net),
+      settled: (record, result) => this._settled(record, result, plugin.meta),
       sync: () => {
         table.dirty = true;
         this.touch();
@@ -782,36 +982,53 @@ class Room {
   _profitFrom(stakes) {
     let profit = this.archivedNet;
     for (const player of this.players.values()) {
-      profit += player.balance + (stakes.get(player.id) || 0) - player.buyIns;
+      profit += this._netOf(player, stakes.get(player.id) || 0);
     }
     return profit;
   }
 
   /**
-   * Levels never go back down. On level-up every member receives a bonus that
-   * is added to the balance AND to the buy-ins, so the profit does not move.
+   * Quotas never go back down. When the team profit crosses one, a bonus pool
+   * (bonusFor(level) per present member) is shared out by contribution: 40 %
+   * in equal parts and 60 % in proportion to what each member won for the team.
+   * Bonuses are added to the balance AND to the buy-ins, so the profit does not move.
    * @returns {object|null} the `celebrate` message to broadcast, if any
    */
-  _levelUp(profit) {
+  _levelUp(profit, stakes) {
     const reached = goal.levelFor(profit, this.level);
     if (reached <= this.level) return null;
-    let bonus = 0;
-    for (let level = this.level + 1; level <= reached; level += 1) {
-      const levelBonus = goal.bonusFor(level);
-      bonus += levelBonus;
-      this.addFeed(
-        'level',
-        `¡Nivel ${level}: ${goal.titleFor(level)}! Bono de ${formatChips(levelBonus)} fichas para cada uno`,
-        { amount: levelBonus }
-      );
+    let perHead = 0;
+    for (let level = this.level + 1; level <= reached; level += 1) perHead += goal.bonusFor(level);
+
+    const present = [...this.players.values()].filter((player) => player.present);
+    const nets = present.map((player) => Math.max(0, this._netOf(player, (stakes && stakes.get(player.id)) || 0)));
+    const total = nets.reduce((sum, net) => sum + net, 0);
+    const pool = perHead * present.length;
+    const bonuses = {};
+    let mvp = null;
+    let top = 0;
+    let handed = 0;
+    present.forEach((player, index) => {
+      const share = total > 0 ? nets[index] / total : 1 / present.length;
+      bonuses[player.id] = Math.floor(pool * (0.4 / present.length + 0.6 * share));
+      handed += bonuses[player.id];
+      if (nets[index] > nets[top]) top = index;
+      if (total > 0 && (!mvp || nets[index] > mvp.net)) mvp = { id: player.id, name: player.name, net: nets[index] };
+    });
+    if (present.length > 0) bonuses[present[top].id] += pool - handed; // rounding leftovers go to the top contributor
+    for (const player of present) {
+      player.balance += bonuses[player.id];
+      player.buyIns += bonuses[player.id];
     }
-    for (const player of this.players.values()) {
-      if (!player.present) continue;
-      player.balance += bonus;
-      player.buyIns += bonus;
-    }
+    this.addFeed(
+      'level',
+      mvp
+        ? `¡Cuota ${reached} cumplida! Figura: ${mvp.name}. El bono se repartió según el aporte de cada uno`
+        : `¡Cuota ${reached} cumplida! Bono de ${formatChips(perHead)} fichas para cada uno`,
+      { amount: pool }
+    );
     this.level = reached;
-    return { t: 'celebrate', kind: 'level', level: reached, title: goal.titleFor(reached), bonus, profit };
+    return { t: 'celebrate', kind: 'level', level: reached, title: goal.titleFor(reached), bonus: perHead, bonuses, mvp, profit };
   }
 
   /** The part of the snapshot that is identical for every viewer. */
@@ -831,8 +1048,11 @@ class Room {
         debt: player.debt || 0,
         level: economy.levelFor(player.stats.wagered),
         rank: economy.rankFor(economy.levelFor(player.stats.wagered)),
-        title: player.title ? (economy.TITLES.find((t) => t.id === player.title) || {}).name || null : null,
-        vip: Boolean(player.owned && player.owned.includes(economy.VIP.id)),
+        title: player.title ? (economy.ITEMS.get(player.title) || {}).name || null : null,
+        vip: player.owned.includes(economy.VIP.id),
+        look: player.profile.look,
+        net: this._netOf(player, stakes.get(player.id) || 0),
+        peak: player.profile.peak,
       });
     }
     const tables = {};
@@ -866,17 +1086,10 @@ class Room {
         availableAt: viewer.rescueAt || 0,
       },
       economy: {
-        xpBase: economy.XP_BASE,
-        loanInterest: economy.LOAN_INTEREST,
-        loanMin: economy.LOAN_MIN,
         loanLimit: economy.loanLimit(economy.levelFor(viewer.stats ? viewer.stats.wagered : 0)),
-        garnish: economy.GARNISH,
-        titles: economy.TITLES,
-        vip: economy.VIP,
-        emotes: economy.EMOTES,
-        vipEmotes: economy.VIP_EMOTES,
         owned: viewer.owned || [],
-        equipped: viewer.title || null,
+        title: viewer.title || null,
+        theme: (viewer.profile && viewer.profile.theme) || economy.DEFAULT_THEME,
       },
     };
   }

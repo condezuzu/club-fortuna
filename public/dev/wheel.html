@@ -1,0 +1,252 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0b0710">
+  <meta name="robots" content="noindex">
+  <title>Club Fortuna · Rueda de ruleta</title>
+
+  <!-- Web fonts are optional: every stack falls back to system fonts offline. -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Playfair+Display:ital,wght@0,500;0,700;0,800;1,500&display=swap">
+
+  <link rel="stylesheet" href="/css/tokens.css">
+  <link rel="stylesheet" href="/css/base.css">
+  <link rel="stylesheet" href="/css/wheel.css">
+
+  <style>
+    /* Test-bench layout only. Everything is scoped under .wd. */
+    .wd {
+      display: grid;
+      gap: var(--space-4);
+      max-width: 66rem;
+      margin: 0 auto;
+      padding: var(--space-5) var(--space-4) var(--space-6);
+    }
+
+    .wd__head {
+      display: grid;
+      gap: var(--space-1);
+    }
+
+    .wd__title {
+      font-size: var(--fs-2xl);
+    }
+
+    .wd__body {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(17rem, 22rem);
+      gap: var(--space-4);
+      align-items: start;
+    }
+
+    @media (max-width: 820px) {
+      .wd__body {
+        grid-template-columns: minmax(0, 1fr);
+      }
+    }
+
+    .wd__stage {
+      display: grid;
+      place-items: center;
+      min-width: 0;
+      min-height: 35rem;
+      padding: var(--space-5);
+      border: 1px solid var(--hairline);
+      border-radius: var(--radius-lg);
+      background:
+        radial-gradient(ellipse 70% 60% at 50% 38%, rgba(126, 72, 150, 0.2), rgba(126, 72, 150, 0) 72%),
+        var(--surface-0);
+      box-shadow: inset 0 0 80px rgba(0, 0, 0, 0.5);
+    }
+
+    .wd__mount {
+      width: 420px;
+      max-width: 100%;
+    }
+
+    .wd__side {
+      display: grid;
+      gap: var(--space-4);
+      min-width: 0;
+    }
+
+    .wd__group {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: var(--space-2);
+    }
+
+    .wd__label {
+      width: 100%;
+      color: var(--text-3);
+      font-size: var(--fs-2xs);
+      font-weight: 600;
+      letter-spacing: var(--tracking-caps);
+      text-transform: uppercase;
+    }
+
+    .wd__btn {
+      min-height: 2.375rem;
+      padding: 0 var(--space-3);
+      border: 1px solid var(--hairline-strong);
+      border-radius: var(--radius-md);
+      background: rgba(212, 175, 90, 0.07);
+      color: var(--gold-200);
+      font-size: var(--fs-sm);
+      font-weight: 600;
+      transition: background-color var(--dur-2) ease, border-color var(--dur-2) ease, color var(--dur-2) ease;
+    }
+
+    .wd__btn:hover {
+      border-color: var(--gold-300);
+      background: rgba(212, 175, 90, 0.16);
+      color: var(--gold-100);
+    }
+
+    .wd__btn--primary {
+      border-color: rgba(255, 244, 205, 0.62);
+      background: var(--grad-brass);
+      color: var(--text-on-gold);
+      font-weight: 700;
+    }
+
+    .wd__btn--primary:hover {
+      background: var(--grad-brass);
+      color: var(--text-on-gold);
+      filter: brightness(1.08);
+    }
+
+    .wd__field {
+      display: inline-flex;
+      align-items: center;
+      gap: var(--space-2);
+      color: var(--text-2);
+      font-size: var(--fs-sm);
+    }
+
+    .wd__field select {
+      min-height: 2.125rem;
+      padding: 0 var(--space-2);
+      border: 1px solid var(--border-strong);
+      border-radius: var(--radius-sm);
+      background: var(--surface-2);
+    }
+
+    .wd__field input {
+      accent-color: var(--gold-400);
+    }
+
+    .wd__stats {
+      display: grid;
+      gap: var(--space-2);
+      margin: 0;
+      padding: var(--space-3);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-md);
+      background: var(--surface-1);
+      font-size: var(--fs-sm);
+    }
+
+    .wd__stats div {
+      display: grid;
+      grid-template-columns: 6.5rem minmax(0, 1fr);
+      gap: var(--space-2);
+    }
+
+    .wd__stats dt {
+      color: var(--text-3);
+    }
+
+    .wd__stats dd {
+      color: var(--text-1);
+      font-variant-numeric: lining-nums tabular-nums;
+    }
+
+    .wd__stats .is-ok {
+      color: var(--win);
+    }
+
+    .wd__stats .is-bad {
+      color: var(--danger);
+    }
+
+    .wd__log {
+      display: grid;
+      gap: 2px;
+      max-height: 11rem;
+      margin: 0;
+      padding: var(--space-3);
+      overflow: auto;
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-md);
+      background: var(--ink-900);
+      color: var(--text-2);
+      font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+      font-size: var(--fs-xs);
+      list-style: none;
+    }
+
+    .wd__log li:first-child {
+      color: var(--gold-200);
+    }
+  </style>
+</head>
+<body>
+  <main class="wd">
+    <header class="wd__head">
+      <p class="eyebrow">Club Fortuna · banco de pruebas</p>
+      <h1 class="wd__title">Rueda de ruleta</h1>
+    </header>
+
+    <div class="wd__body">
+      <section class="wd__stage" aria-label="Rueda">
+        <div class="wd__mount" data-mount>
+          <noscript>Esta página necesita JavaScript.</noscript>
+        </div>
+      </section>
+
+      <aside class="wd__side">
+        <div class="wd__group" role="group" aria-label="Acciones">
+          <span class="wd__label">Acciones</span>
+          <button class="wd__btn wd__btn--primary" type="button" data-act="spin" data-ms="9000">Girar al azar (9 s)</button>
+          <button class="wd__btn" type="button" data-act="spin" data-number="0" data-ms="9000">Girar al 0</button>
+          <button class="wd__btn" type="button" data-act="spin" data-number="17" data-ms="9000">Girar al 17</button>
+          <button class="wd__btn" type="button" data-act="spin" data-ms="3000">Giro rápido (3 s)</button>
+          <button class="wd__btn" type="button" data-act="settle" data-number="32">Asentar en 32</button>
+          <button class="wd__btn" type="button" data-act="clear">Limpiar</button>
+        </div>
+
+        <div class="wd__group">
+          <span class="wd__label">Opciones</span>
+          <label class="wd__field">Tamaño
+            <select data-size>
+              <option value="160">160 px</option>
+              <option value="200">200 px</option>
+              <option value="320">320 px</option>
+              <option value="420" selected>420 px</option>
+              <option value="520">520 px</option>
+            </select>
+          </label>
+          <label class="wd__field"><input type="checkbox" data-reduced> Movimiento reducido</label>
+          <label class="wd__field"><input type="checkbox" data-sound> Sonido</label>
+        </div>
+
+        <dl class="wd__stats">
+          <div><dt>Estado</dt><dd data-out="state">–</dd></div>
+          <div><dt>Ticks</dt><dd data-out="ticks">0</dd></div>
+          <div><dt>onLand</dt><dd data-out="landed">–</dd></div>
+          <div><dt>selfTest()</dt><dd data-out="selftest">…</dd></div>
+        </dl>
+
+        <ol class="wd__log" data-log aria-label="Registro"></ol>
+      </aside>
+    </div>
+  </main>
+
+  <script type="module" src="/dev/wheel.dev.js"></script>
+</body>
+</html>

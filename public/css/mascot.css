@@ -1,0 +1,462 @@
+/* ==========================================================================
+   Club Fortuna — Don Fortunato, croupier and mascot
+   Requires tokens.css. Markup and sequencing live in /js/mascot.js.
+
+   Sizing     the shell sets --mascot-h (default 150px); the box is 0.65 x h.
+   Rig        every part group pivots in viewBox units (transform-box: view-box).
+              Arms and legs share one frame: the screen-right copies sit inside
+              a mirroring group, so a positive rotation always means "outwards".
+   States     set by the script on the root:
+                data-anim   the animation that is playing (keyframes below)
+                data-eyes / data-brows / data-mouth      expression
+                data-hand-l / data-hand-r                hand shape
+                data-prop-l / data-prop-r                what he is holding
+                data-hit    what just landed on him
+                .is-speaking .is-talking .is-asleep .is-waking .is-blink
+                .is-flushed .is-cleaning .has-rose .is-reduced .is-frozen
+   ========================================================================== */
+
+.mascot {
+  /* palette — design tokens where the system has one */
+  --m-skin: #f3caa5;
+  --m-skin-shade: #d9a37b;
+  --m-face: #f3caa5;
+  --m-face-shade: #e3b08a;
+  --m-nose: #edb48f;
+  --m-nose-shade: #dc9a77;
+  --m-nose-hi: #fbe2ca;
+  --m-cheek: #e98f7f;
+  --m-hair: #281d31;
+  --m-hair-shine: #8f7ca9;
+  --m-rim: var(--ink-400, #6f5c7e);
+  --m-shirt: var(--ivory-50, #fffdf6);
+  --m-shirt-shade: #cfc4b0;
+  --m-vest-a: #ad2c43;
+  --m-vest-b: var(--oxblood-600, #6c1525);
+  --m-vest-dark: var(--oxblood-800, #2f0810);
+  --m-vest-light: #d0566a;
+  --m-gold: var(--gold-300, #e6c878);
+  --m-gold-dark: var(--gold-500, #b8923f);
+  --m-gold-light: var(--gold-50, #fff8e1);
+  --m-trouser: #2e2439;
+  --m-trouser-line: #483856;
+  --m-shoe: #19121f;
+  --m-mouth: #5a1420;
+  --m-lip: #8a2f3a;
+  --m-tongue: #de6f7a;
+
+  position: relative;
+  display: block;
+  flex: none;
+  width: calc(var(--mascot-h, 150px) * 0.65);
+  height: var(--mascot-h, 150px);
+  font-family: var(--font-ui, system-ui, sans-serif);
+  line-height: 1.3;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* ---- the figure (a button) ------------------------------------------------ */
+
+.mascot__figure {
+  position: absolute;
+  inset: 0;
+  border-radius: 14px;
+  cursor: pointer;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.mascot__figure:focus {
+  outline: none;
+}
+
+.mascot__figure:focus-visible {
+  outline: 2px solid var(--gold-300, #e6c878);
+  outline-offset: 2px;
+}
+
+.mascot__svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.mascot__svg g,
+.mascot__svg path,
+.mascot__svg rect,
+.mascot__svg circle,
+.mascot__svg ellipse {
+  transform-box: view-box;
+}
+
+/* ---- fills ----------------------------------------------------------------- */
+
+.m-stop-glow-a { stop-color: var(--gold-200, #f3dfa2); stop-opacity: 0.13; }
+.m-stop-glow-b { stop-color: var(--gold-200, #f3dfa2); stop-opacity: 0; }
+.m-stop-vest-a { stop-color: var(--m-vest-a); }
+.m-stop-vest-b { stop-color: var(--m-vest-b); }
+
+.m-shadow { fill: rgba(0, 0, 0, 0.5); }
+
+.m-skin { fill: var(--m-skin); }
+.m-skin-shade { fill: var(--m-skin-shade); }
+.m-skin-line { fill: none; stroke: var(--m-skin-shade); stroke-width: 0.9; stroke-linecap: round; }
+.m-finger { fill: none; stroke: var(--m-skin); stroke-linecap: round; }
+
+.m-face,
+.m-lid-skin { fill: var(--m-face); transition: fill 320ms ease; }
+.m-face-line { fill: none; stroke: var(--m-face-shade); stroke-width: 1; stroke-linecap: round; transition: stroke 320ms ease; }
+.m-jaw,
+.m-face-side,
+.m-hair-cast { fill: var(--m-face-shade); transition: fill 320ms ease; }
+.m-jaw { opacity: 0.6; }
+.m-face-side { opacity: 0.5; }
+.m-hair-cast { opacity: 0.75; }
+.m-eyebag { opacity: 0.9; }
+.m-nose { fill: var(--m-nose); transition: fill 320ms ease; }
+.m-nose-shade { fill: var(--m-nose-shade); transition: fill 320ms ease; }
+.m-nose-hi { fill: var(--m-nose-hi); opacity: 0.9; }
+.m-cheek { fill: var(--m-cheek); opacity: 0.26; transition: opacity 320ms ease; }
+
+.m-hair { fill: var(--m-hair); stroke: var(--m-rim); stroke-width: 0.7; stroke-opacity: 0.55; stroke-linejoin: round; }
+.m-hair-shine { fill: none; stroke: var(--m-hair-shine); stroke-linecap: round; opacity: 0.85; }
+.m-hair-shine--b { opacity: 0.5; }
+.m-hair-part { fill: none; stroke: #4d3d60; stroke-width: 0.8; stroke-linecap: round; }
+
+.m-brow path { fill: var(--m-hair); }
+
+.m-eye-white { fill: #fffdf8; }
+.m-pupil-dot { fill: #241a2c; }
+.m-pupil-hi { fill: #fff; }
+.m-lash { fill: none; stroke: var(--m-hair); stroke-width: 1.5; stroke-linecap: round; }
+.m-eyes-alt { fill: none; stroke: var(--m-hair); stroke-width: 2.3; stroke-linecap: round; stroke-linejoin: round; }
+
+.m-lip { fill: none; stroke: var(--m-lip); stroke-width: 1.9; stroke-linecap: round; }
+.m-mouth-in { fill: var(--m-mouth); }
+.m-teeth { fill: #fffdf6; }
+.m-teeth--grit { stroke: var(--m-mouth); stroke-width: 1; }
+.m-grit-line { fill: none; stroke: var(--m-mouth); stroke-width: 0.8; }
+.m-tongue { fill: var(--m-tongue); }
+
+.m-shirt { fill: var(--m-shirt); }
+.m-shirt-line { fill: none; stroke: var(--m-shirt-shade); stroke-width: 0.9; }
+.m-stud { fill: #4a3b5a; }
+.m-collar { fill: var(--m-shirt); stroke: var(--m-shirt-shade); stroke-width: 0.7; stroke-linejoin: round; }
+.m-sleeve { fill: var(--m-shirt); stroke: var(--m-shirt); stroke-linecap: round; }
+circle.m-sleeve { stroke: none; }
+.m-sleeve-edge { fill: none; stroke: var(--m-shirt-shade); stroke-linecap: round; }
+.m-sleeve-fold { fill: none; stroke: var(--m-shirt-shade); stroke-width: 0.8; stroke-linecap: round; opacity: 0.8; }
+.m-cuff { fill: var(--m-shirt); stroke: var(--m-shirt-shade); stroke-width: 0.8; }
+
+.m-vest-shade { fill: #1b0409; opacity: 0.22; }
+.m-vest-shade--r { opacity: 0.3; }
+.m-vest-line { fill: none; stroke: var(--m-vest-dark); stroke-width: 1; stroke-linecap: round; stroke-linejoin: round; opacity: 0.85; }
+.m-vest-hi { fill: none; stroke: var(--m-vest-light); stroke-width: 1.2; stroke-linecap: round; opacity: 0.55; }
+.m-chain { fill: none; stroke: var(--m-gold); stroke-width: 1; stroke-linecap: round; }
+
+.m-gold { fill: var(--m-gold); }
+.m-gold-dark { fill: var(--m-gold-dark); }
+.m-gold-shade { fill: var(--m-gold-dark); opacity: 0.55; }
+.m-gold-hi { fill: none; stroke: var(--m-gold-light); stroke-width: 0.9; stroke-linecap: round; opacity: 0.8; }
+.m-garter { fill: none; stroke: var(--m-gold-dark); stroke-width: 2.6; }
+.m-garter-hi { fill: none; stroke: var(--m-gold-light); stroke-width: 1; stroke-linecap: round; opacity: 0.7; }
+
+.m-trouser { fill: var(--m-trouser); stroke: var(--m-rim); stroke-width: 0.7; stroke-opacity: 0.5; stroke-linejoin: round; }
+.m-hips { stroke: none; }
+.m-trouser-crease { fill: none; stroke: var(--m-trouser-line); stroke-width: 0.9; stroke-linecap: round; }
+.m-trouser-shade { fill: #0d0812; opacity: 0.4; }
+.m-shoe { fill: var(--m-shoe); stroke: var(--m-rim); stroke-width: 0.7; stroke-opacity: 0.6; stroke-linejoin: round; }
+.m-spat { fill: var(--ivory-200, #f0e7cf); }
+.m-shoe-shine { fill: none; stroke: #9383a0; stroke-width: 1; stroke-linecap: round; opacity: 0.8; }
+
+.m-card-edge { fill: #b9ad96; }
+.m-card-face { fill: var(--ivory-50, #fffdf6); }
+.m-card-back { fill: var(--oxblood-500, #8f1f31); }
+.m-card-deco { fill: var(--m-gold); }
+.m-bill { fill: #7dbb8a; stroke: #3f7d52; stroke-width: 0.8; }
+.m-bill--back { fill: #5fa06d; }
+.m-bill-mark { fill: none; stroke: #3f7d52; stroke-width: 0.8; }
+.m-hanky { fill: #fffdf6; stroke: #c9c0d6; stroke-width: 0.8; }
+.m-hanky-line { fill: none; stroke: #c9c0d6; stroke-width: 0.8; stroke-linecap: round; }
+
+.m-leaf { fill: #4faa6c; }
+.m-rose { fill: #d43a4c; }
+.m-rose-line { fill: none; stroke: #8f1f31; stroke-width: 0.8; stroke-linecap: round; }
+
+.m-boutonniere { opacity: 0; transition: opacity 400ms ease; }
+.mascot.has-rose .m-boutonniere { opacity: 1; }
+
+/* ---- rig: pivots ------------------------------------------------------------- */
+
+.m-all { transform-origin: 52px 156px; }
+.m-leg { transform-origin: 41px 113px; }
+.m-breath,
+.m-upper { transform-origin: 52px 114px; }
+.m-headwrap,
+.m-head { transform-origin: 52px 63px; }
+.m-arm { transform-origin: 27px 75px; }
+.m-fore { transform-origin: 23px 94.6px; }
+.m-hand { transform-origin: 22.4px 111px; }
+.m-brow--l { transform-origin: 40.5px 29.4px; }
+.m-brow--r { transform-origin: 63.5px 29.4px; }
+.m-eye--l { transform-origin: 41px 37.8px; }
+.m-eye--r { transform-origin: 63px 37.8px; }
+.m-stache { transform-origin: 52px 50px; }
+.m-shadow { transform-origin: 52px 155.4px; }
+
+/* ---- hands and props ----------------------------------------------------------- */
+
+.m-hand__v,
+.m-prop {
+  opacity: 0;
+}
+
+.m-hand__v--rest {
+  opacity: 1;
+}
+
+.mascot[data-hand-l]:not([data-hand-l="rest"]) .m-arm--l .m-hand__v--rest,
+.mascot[data-hand-r]:not([data-hand-r="rest"]) .m-arm--r .m-hand__v--rest {
+  opacity: 0;
+}
+
+.mascot[data-hand-l="spread"] .m-arm--l .m-hand__v--spread,
+.mascot[data-hand-r="spread"] .m-arm--r .m-hand__v--spread,
+.mascot[data-hand-l="point"] .m-arm--l .m-hand__v--point,
+.mascot[data-hand-r="point"] .m-arm--r .m-hand__v--point,
+.mascot[data-hand-l="fist"] .m-arm--l .m-hand__v--fist,
+.mascot[data-hand-r="fist"] .m-arm--r .m-hand__v--fist,
+.mascot[data-prop-l="deck"] .m-arm--l .m-prop--deck,
+.mascot[data-prop-r="deck"] .m-arm--r .m-prop--deck,
+.mascot[data-prop-l="half"] .m-arm--l .m-prop--half,
+.mascot[data-prop-r="half"] .m-arm--r .m-prop--half,
+.mascot[data-prop-l="bills"] .m-arm--l .m-prop--bills,
+.mascot[data-prop-r="bills"] .m-arm--r .m-prop--bills,
+.mascot[data-prop-l="hanky"] .m-arm--l .m-prop--hanky,
+.mascot[data-prop-r="hanky"] .m-arm--r .m-prop--hanky {
+  opacity: 1;
+}
+
+/* ---- expression ---------------------------------------------------------------- */
+
+.m-brow {
+  transition: transform 180ms var(--ease-out, ease-out);
+}
+
+/* smug by default: one eyebrow cocked */
+.m-brow--r { transform: translateY(-1.7px) rotate(-6deg); }
+
+.mascot[data-brows="up"] .m-brow--l { transform: translateY(-2.8px) rotate(-5deg); }
+.mascot[data-brows="up"] .m-brow--r { transform: translateY(-2.8px) rotate(5deg); }
+.mascot[data-brows="angry"] .m-brow--l { transform: translateY(1.9px) rotate(19deg); }
+.mascot[data-brows="angry"] .m-brow--r { transform: translateY(1.9px) rotate(-19deg); }
+.mascot[data-brows="sad"] .m-brow--l { transform: translateY(-1.4px) rotate(-17deg); }
+.mascot[data-brows="sad"] .m-brow--r { transform: translateY(-1.4px) rotate(17deg); }
+.mascot[data-brows="skeptic"] .m-brow--l { transform: translateY(1.2px) rotate(9deg); }
+.mascot[data-brows="skeptic"] .m-brow--r { transform: translateY(-3.4px) rotate(-10deg); }
+
+.m-eye {
+  transition: transform 70ms linear;
+}
+
+.m-lid {
+  transition: transform 140ms var(--ease-out, ease-out), opacity 120ms linear;
+}
+
+.m-pupil {
+  transform: translate(calc(var(--m-look-x, 0) * 1px), calc(var(--m-look-y, 0) * 1px));
+  transition: transform 170ms var(--ease-out, ease-out);
+}
+
+.mascot.is-blink .m-eye { transform: scaleY(0.08); }
+
+.m-eyes-alt { opacity: 0; }
+
+.mascot[data-eyes="happy"] .m-eyes-open,
+.mascot[data-eyes="shut"] .m-eyes-open,
+.mascot[data-eyes="squeeze"] .m-eyes-open { opacity: 0; }
+
+.mascot[data-eyes="happy"] .m-eyes-happy,
+.mascot[data-eyes="shut"] .m-eyes-shut,
+.mascot[data-eyes="squeeze"] .m-eyes-squeeze { opacity: 1; }
+
+.mascot[data-eyes="wide"] .m-eye { transform: scale(1.14); }
+.mascot[data-eyes="wide"] .m-lid { transform: translateY(-6px); }
+.mascot[data-eyes="narrow"] .m-lid { transform: translateY(2.6px); }
+
+.m-mouth { opacity: 0; }
+
+.mascot[data-mouth="smirk"] .m-mouth--smirk,
+.mascot[data-mouth="flat"] .m-mouth--flat,
+.mascot[data-mouth="frown"] .m-mouth--frown,
+.mascot[data-mouth="oh"] .m-mouth--oh,
+.mascot[data-mouth="open"] .m-mouth--open,
+.mascot[data-mouth="grin"] .m-mouth--grin,
+.mascot[data-mouth="wail"] .m-mouth--wail,
+.mascot[data-mouth="grit"] .m-mouth--grit { opacity: 1; }
+
+/* talking: the mouth flaps through closed / "o" / open while the line types */
+.mascot.is-talking .m-mouths .m-mouth { opacity: 0; }
+.mascot.is-talking .m-mouths .m-mouth--smirk { animation: m-flap-shut 560ms step-end infinite; }
+.mascot.is-talking .m-mouths .m-mouth--oh { animation: m-flap-oh 560ms step-end infinite; }
+.mascot.is-talking .m-mouths .m-mouth--open { animation: m-flap-open 560ms step-end infinite; }
+.mascot.is-talking .m-stache { animation: m-flap-stache 280ms ease-in-out infinite; }
+
+@keyframes m-flap-shut {
+  0% { opacity: 1; }
+  12% { opacity: 0; }
+  62% { opacity: 1; }
+  75% { opacity: 0; }
+}
+
+@keyframes m-flap-oh {
+  0% { opacity: 0; }
+  12% { opacity: 1; }
+  25% { opacity: 0; }
+  37% { opacity: 1; }
+  50% { opacity: 0; }
+  87% { opacity: 1; }
+}
+
+@keyframes m-flap-open {
+  0% { opacity: 0; }
+  25% { opacity: 1; }
+  37% { opacity: 0; }
+  50% { opacity: 1; }
+  62% { opacity: 0; }
+  75% { opacity: 1; }
+  87% { opacity: 0; }
+}
+
+@keyframes m-flap-stache {
+  50% { transform: translateY(-0.5px); }
+}
+
+/* flushed (angry) */
+.mascot.is-flushed {
+  --m-face: #ee8d74;
+  --m-face-shade: #d9684f;
+  --m-nose: #e6705a;
+}
+
+/* ---- idle life ------------------------------------------------------------------ */
+
+.m-breath { animation: m-breathe 3800ms ease-in-out infinite; }
+.m-headwrap { animation: m-head-idle 7600ms ease-in-out infinite; }
+.m-arm--l { animation: m-arm-idle 3800ms ease-in-out infinite; }
+.m-arm--r { animation: m-arm-idle 3800ms ease-in-out -400ms infinite; }
+
+@keyframes m-breathe {
+  50% { transform: translateY(-0.9px) scaleY(1.012); }
+}
+
+@keyframes m-head-idle {
+  28% { transform: rotate(-1.3deg) translateY(0.3px); }
+  64% { transform: rotate(1.1deg); }
+}
+
+@keyframes m-arm-idle {
+  50% { transform: rotate(1.6deg); }
+}
+
+/* ---- speech bubble ---------------------------------------------------------------- */
+
+.mascot__bubble {
+  position: absolute;
+  left: calc(var(--mascot-h, 150px) * 0.5);
+  bottom: calc(var(--mascot-h, 150px) * 0.9);
+  z-index: 2;
+  width: max-content;
+  max-width: min(300px, 70vw);
+  padding: 0.7rem 0.85rem 0.6rem;
+  border-radius: 16px 16px 16px 5px;
+  background: var(--ivory-50, #fffdf6);
+  color: var(--text-on-ivory, #1c1a24);
+  font-family: var(--font-display, Georgia, serif);
+  font-style: italic;
+  font-size: var(--fs-md, 0.9375rem);
+  font-weight: 500;
+  line-height: 1.3;
+  text-align: left;
+  filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.35)) drop-shadow(0 10px 22px rgba(0, 0, 0, 0.45));
+  pointer-events: none;
+  opacity: 0;
+  visibility: hidden;
+  transform: translate(-8px, 10px) scale(0.86);
+  transform-origin: 0 100%;
+  transition:
+    opacity 160ms ease,
+    transform 200ms var(--ease-in, ease-in),
+    visibility 0s linear 200ms;
+}
+
+.mascot__bubble::after {
+  content: "";
+  position: absolute;
+  left: 7px;
+  bottom: -11px;
+  width: 18px;
+  height: 12px;
+  background: inherit;
+  clip-path: polygon(0 100%, 22% 0, 100% 0);
+}
+
+.mascot.is-speaking .mascot__bubble {
+  opacity: 1;
+  visibility: visible;
+  transform: none;
+  transition:
+    opacity 140ms ease,
+    transform 320ms var(--ease-spring, cubic-bezier(0.34, 1.56, 0.64, 1)),
+    visibility 0s;
+}
+
+.mascot__name {
+  position: absolute;
+  left: 10px;
+  top: -0.6rem;
+  padding: 0.12rem 0.5rem;
+  border: 1px solid var(--hairline-strong, rgba(212, 175, 90, 0.48));
+  border-radius: var(--radius-pill, 999px);
+  background: var(--ink-800, #1c1325);
+  color: var(--gold-200, #f3dfa2);
+  font-family: var(--font-ui, system-ui, sans-serif);
+  font-size: 0.625rem;
+  font-style: normal;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  line-height: 1.3;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.mascot__line {
+  display: block;
+  overflow-wrap: break-word;
+}
+
+.mascot__rest {
+  visibility: hidden;
+}
+
+.mascot__sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* ---- freeze (dev) / reduced motion ------------------------------------------------- */
+
+.mascot.is-frozen,
+.mascot.is-frozen * {
+  animation-play-state: paused !important;
+}

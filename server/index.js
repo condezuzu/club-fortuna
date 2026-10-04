@@ -20,6 +20,7 @@ const path = require('node:path');
 const { WebSocketServer } = require('ws');
 
 const { Hub } = require('./hub');
+const saves = require('./saves');
 const { createStaticHandler } = require('./static');
 
 const DEFAULT_PORT = 3000;
@@ -99,7 +100,7 @@ async function start(options = {}) {
 
   const serveStatic = createStaticHandler({
     root: options.publicDir || PUBLIC_DIR,
-    health: () => ({ ...hub.stats(), games: hub.registry.list.map((meta) => meta.id) }),
+    health: () => ({ ...hub.stats(), games: hub.registry.list.map((meta) => meta.id), savesSecured: saves.isSecured() }),
   });
 
   const server = http.createServer((req, res) => {

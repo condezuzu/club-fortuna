@@ -3,24 +3,48 @@ import { createDealer } from '../dealer.js';
 
 const STATUS = { stand: 'Se planta', bust: 'Se pasó', blackjack: 'Blackjack' };
 const RESULT = { win: 'Gana', lose: 'Pierde', push: 'Empate', blackjack: '¡Blackjack!' };
+const ARC = `
+<svg class="table-arc" viewBox="0 0 600 90" aria-hidden="true">
+  <path id="bj-arc" d="M30 20 Q300 110 570 20" fill="none"/>
+  <text><textPath href="#bj-arc" startOffset="50%" text-anchor="middle">BLACKJACK PAGA 3 A 2 · EL CRUPIER SE PLANTA EN 17</textPath></text>
+</svg>`;
 
 export default {
   id: 'blackjack',
   icon: 'spade',
+  art(ui) {
+    return ui.el(
+      'div',
+      { class: 'art-cards' },
+      ui.createCard({ rank: 'A', suit: 'S' }, { size: 'sm' }),
+      ui.createCard({ rank: 'K', suit: 'H' }, { size: 'sm' })
+    );
+  },
   mount(root, api) {
     const { el, clear, formatChips, createButton, createCard } = api.ui;
+    const dealer = createDealer(api);
+    const values = api.meta.chips || [5, 25, 100, 500];
     let state = null;
     let seen = {};
     let timers = [];
-    const dealer = createDealer(api);
 
     const statusEl = el('div', { class: 'bj__status' });
     const dealerHand = api.ui.createHand({ variant: 'spread' });
     const dealerTotal = el('span', { class: 'bj__total' });
     const handsEl = el('div', { class: 'bj__hands' });
+    const arc = el('div', { class: 'bj__arc' });
+    arc.innerHTML = ARC; // static markup authored above
 
-    const tray = api.ui.createChipTray({ values: [5, 25, 100, 500], value: 25, onChange() {}, getBalance: () => api.me().balance });
-    const betBtn = createButton('Apostar', { variant: 'secondary', icon: 'plus', onClick: () => api.send({ type: 'bet', amount: tray.value }) });
+    const tray = api.ui.createChipTray({ values, value: values[1], onChange() {}, getBalance: () => api.me().balance });
+    const betBtn = createButton('Apostar', {
+      variant: 'secondary',
+      icon: 'plus',
+      sound: false,
+      onClick: () => {
+        api.fx.bet(tray, handsEl.querySelector('.bj__seat.is-me .bj__circle') || handsEl, tray.value);
+        api.send({ type: 'bet', amount: tray.value });
+      },
+    });
     const clearBtn = createButton('Limpiar', { variant: 'ghost', icon: 'trash', onClick: () => api.send({ type: 'clear' }) });
     const dealBtn = createButton('Repartir', { variant: 'primary', onClick: () => api.send({ type: 'deal' }) });
     const betting = el('div', { class: 'bj__controls' }, tray, betBtn, clearBtn, dealBtn);
@@ -34,11 +58,11 @@ export default {
       el(
         'div',
         { class: 'bj' },
-        dealer,
         el(
           'div',
           { class: 'bj__table felt' },
           el('div', { class: 'bj__dealer' }, el('span', { class: 'bj__who' }, 'Crupier ', dealerTotal), dealerHand),
+          arc,
           statusEl,
           handsEl
         ),
@@ -78,28 +102,36 @@ export default {
       statusEl.textContent = text;
     }, 250);
 
+    function seat(cls, ...children) {
+      return el('div', { class: `bj__seat ${cls}` }, ...children);
+    }
+
     function update(s) {
       if (s.phase === 'betting') seen = {};
       if (state && state.phase === 'playing' && s.phase !== 'playing' && s.phase !== 'betting') api.audio.play('flip');
       if (state && state.phase !== 'playing' && s.phase === 'playing') dealer.say('bet', 'Cartas repartidas. ¿Pide o se planta?');
-      const mineBefore = state && state.hands ? state.hands.find((h) => h.id === api.me().id) : null;
-      const mineNow = s.hands.find((h) => h.id === api.me().id);
+      const myId = api.me().id;
+      const mineBefore = state && state.hands ? state.hands.find((h) => h.id === myId) : null;
+      const mineNow = s.hands.find((h) => h.id === myId);
       if (mineNow && mineNow.status === 'bust' && (!mineBefore || mineBefore.status !== 'bust')) dealer.say('bust');
       state = s;
-      const myId = api.me().id;
 
       renderCards(dealerHand, 'dealer', s.dealer.cards);
       dealerTotal.textContent = s.dealer.total === null ? '' : `· ${s.dealer.total}`;
 
       clear(handsEl);
       if (s.phase === 'betting') {
-        if (s.bets.length === 0) handsEl.append(el('p', { class: 'bj__empty' }, 'Elegí una ficha y apostá para empezar la mano.'));
+        const mine = s.bets.find((b) => b.id === myId);
+        if (!mine) {
+          handsEl.append(
+            seat('is-me is-empty', el('div', { class: 'bj__circle' }, el('span', { class: 'bj__hint' }, 'Tu apuesta')), el('span', { class: 'bj__who' }, api.me().name))
+          );
+        }
         for (const b of s.bets) {
           handsEl.append(
-            el(
-              'div',
-              { class: `bj__seat${b.id === myId ? ' is-me' : ''}` },
-              api.ui.createChipStack(b.amount, { size: 'sm', color: b.avatar }),
+            seat(
+              b.id === myId ? 'is-me' : '',
+              el('div', { class: 'bj__circle' }, api.ui.createChipStack(b.amount, { size: 'sm', color: b.avatar })),
               el('span', { class: 'bj__who' }, b.name)
             )
           );
@@ -111,12 +143,11 @@ export default {
           const label = h.result ? RESULT[h.result] : STATUS[h.status] || '';
           const net = h.result ? h.payout - h.bet : 0;
           handsEl.append(
-            el(
-              'div',
-              { class: `bj__seat${h.id === myId ? ' is-me' : ''}${h.id === s.turn ? ' is-turn' : ''}${h.result ? ` is-${h.result}` : ''}` },
+            seat(
+              `${h.id === myId ? 'is-me' : ''}${h.id === s.turn ? ' is-turn' : ''}${h.result ? ` is-${h.result}` : ''}`,
               hand,
               el('span', { class: 'bj__who' }, `${h.name} · ${h.total}`),
-              el('span', { class: 'bj__bet' }, `Apuesta ${formatChips(h.bet)}`),
+              el('div', { class: 'bj__circle bj__circle--sm' }, api.ui.createChipStack(h.bet, { size: 'sm', color: h.avatar })),
               label ? el('span', { class: 'bj__badge' }, h.result && net !== 0 ? `${label} ${net > 0 ? '+' : ''}${formatChips(net)}` : label) : null
             )
           );
@@ -136,14 +167,17 @@ export default {
       if (name !== 'result') return;
       const mine = payload.hands.find((h) => h.id === api.me().id);
       if (!mine) return;
+      const from = handsEl.querySelector('.bj__seat.is-me') || handsEl;
       if (mine.net > 0) {
         api.audio.play(mine.result === 'blackjack' ? 'bigwin' : 'win');
         dealer.say(mine.result === 'blackjack' ? 'bigwin' : 'win');
         api.ui.showBanner(root, { title: RESULT[mine.result], subtitle: `+${formatChips(mine.net)} fichas`, kind: 'win' });
+        api.fx.pay(from, mine.net);
       } else if (mine.net < 0) {
         api.audio.play('lose');
-        if (mine.result !== 'lose' || Math.random() < 1) dealer.say('lose');
+        dealer.say('lose');
         api.ui.showBanner(root, { title: 'Gana la casa', subtitle: `${formatChips(mine.net)} fichas`, kind: 'lose' });
+        api.fx.take(from, -mine.net);
       } else {
         dealer.say('push');
         api.ui.showBanner(root, { title: 'Empate', subtitle: 'Recuperás tu apuesta', kind: 'push' });

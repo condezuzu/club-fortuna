@@ -1,5 +1,7 @@
 'use strict';
 
+const { defineGame } = require('./_define');
+
 /**
  * Baccarat (punto banco).
  *
@@ -49,7 +51,7 @@ function bankerDraws(bankerTotal, third) {
   return false;
 }
 
-function create(ctx) {
+function createWith(meta, ctx) {
   let phase = 'betting';
   let deadline = null;
   let timer = null;
@@ -211,4 +213,4 @@ function create(ctx) {
   };
 }
 
-module.exports = { meta, create, internals: { handTotal, bankerDraws, cardValue, TIMING } };
+module.exports = defineGame(meta, createWith, { internals: { handTotal, bankerDraws, cardValue, TIMING } });

@@ -1,6 +1,22 @@
 {
   "version": "0.0.1",
   "configurations": [
-    { "name": "club-fortuna", "runtimeExecutable": "node", "runtimeArgs": ["server/index.js"], "port": 3000 }
+    {
+      "name": "club-fortuna",
+      "runtimeExecutable": "node",
+      "runtimeArgs": [
+        "server/index.js"
+      ],
+      "port": 3000
+    },
+    {
+      "name": "club-fortuna-dev",
+      "runtimeExecutable": "node",
+      "runtimeArgs": [
+        "-e",
+        "require('./server/index.js').start({ port: 3100 })"
+      ],
+      "port": 3100
+    }
   ]
 }

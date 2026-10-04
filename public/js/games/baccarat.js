@@ -12,12 +12,22 @@ const LETTER = { player: 'P', banker: 'B', tie: 'E' };
 export default {
   id: 'baccarat',
   icon: 'diamond',
+  art(ui) {
+    return ui.el(
+      'div',
+      { class: 'art-cards' },
+      ui.createCard({ rank: '9', suit: 'D' }, { size: 'sm' }),
+      ui.createCard(null, { size: 'sm' })
+    );
+  },
   mount(root, api) {
     const { el, clear, formatChips, createButton, createCard } = api.ui;
+    const dealer = createDealer(api);
+    const values = api.meta.chips || [5, 25, 100, 500];
     let state = null;
     let dealt = false;
     let timers = [];
-    const dealer = createDealer(api);
+    const shown = {};
 
     const statusEl = el('div', { class: 'bc__status' });
     const histEl = el('div', { class: 'bc__history' });
@@ -25,19 +35,28 @@ export default {
       player: { hand: api.ui.createHand({ variant: 'spread' }), total: el('span', { class: 'bc__total' }) },
       banker: { hand: api.ui.createHand({ variant: 'spread' }), total: el('span', { class: 'bc__total' }) },
     };
-    const tray = api.ui.createChipTray({ values: [5, 25, 100, 500], value: 25, onChange() {}, getBalance: () => api.me().balance });
+    const tray = api.ui.createChipTray({ values, value: values[1], onChange() {}, getBalance: () => api.me().balance });
     const spotEls = {};
     const spotsRow = el('div', { class: 'bc__spots' });
     for (const spot of SPOTS) {
+      const stack = el('span', { class: 'bc__stack' });
       const chips = el('span', { class: 'bc__chips' });
       const btn = el(
         'button',
-        { class: `bc__spot bc__spot--${spot.id}`, type: 'button', onClick: () => api.send({ type: 'bet', spot: spot.id, amount: tray.value }) },
+        {
+          class: `bc__spot bc__spot--${spot.id}`,
+          type: 'button',
+          onClick: () => {
+            api.fx.bet(tray, stack, tray.value);
+            api.send({ type: 'bet', spot: spot.id, amount: tray.value });
+          },
+        },
         el('strong', null, spot.label),
         el('small', null, spot.pays),
+        stack,
         chips
       );
-      spotEls[spot.id] = { btn, chips };
+      spotEls[spot.id] = { btn, chips, stack };
       spotsRow.append(btn);
     }
     const clearBtn = createButton('Limpiar', { variant: 'ghost', icon: 'trash', onClick: () => api.send({ type: 'clear' }) });
@@ -47,7 +66,6 @@ export default {
       el(
         'div',
         { class: 'bc' },
-        dealer,
         el(
           'div',
           { class: 'bc__table felt' },
@@ -114,9 +132,14 @@ export default {
           if (b.id === myId) mine = b[spot.id];
         }
         const node = spotEls[spot.id];
+        if (shown[spot.id] !== total) {
+          shown[spot.id] = total;
+          clear(node.stack);
+          if (total) node.stack.append(api.ui.createChipStack(total, { size: 'sm', label: false, animate: true }));
+        }
         node.chips.textContent = total ? (mine ? `${formatChips(total)} (vos ${formatChips(mine)})` : formatChips(total)) : '';
         node.btn.disabled = s.phase !== 'betting';
-        node.btn.classList.toggle('is-win', s.phase === 'result' && s.hands && s.hands.winner === spot.id);
+        node.btn.classList.toggle('is-win', s.phase === 'result' && Boolean(s.hands) && s.hands.winner === spot.id);
       }
 
       clear(histEl);
@@ -131,15 +154,19 @@ export default {
       if (name !== 'result') return;
       const mine = payload.results.find((r) => r.id === api.me().id);
       if (!mine) return;
+      const from = spotEls[payload.winner].btn;
       if (mine.net > 0) {
-        api.audio.play(mine.net >= 500 ? 'bigwin' : 'win');
-        dealer.say(mine.net >= 500 ? 'bigwin' : 'win');
+        api.audio.play(mine.net >= mine.wagered * 5 ? 'bigwin' : 'win');
+        dealer.say(mine.net >= mine.wagered * 5 ? 'bigwin' : 'win');
         api.ui.showBanner(root, { title: `+${formatChips(mine.net)}`, subtitle: WINNER[payload.winner], kind: 'win' });
+        api.fx.pay(from, mine.won);
       } else if (mine.net < 0) {
         api.audio.play('lose');
         dealer.say('lose');
         api.ui.showBanner(root, { title: WINNER[payload.winner], subtitle: `${formatChips(mine.net)} fichas`, kind: 'lose' });
+        api.fx.take(spotsRow, -mine.net);
       } else {
+        dealer.say('push');
         api.ui.showBanner(root, { title: WINNER[payload.winner], subtitle: 'Recuperás tu apuesta', kind: 'push' });
       }
     }

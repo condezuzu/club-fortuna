@@ -1,5 +1,7 @@
 'use strict';
 
+const { defineGame } = require('./_define');
+
 /**
  * Blackjack — everybody at the table plays against the dealer.
  *
@@ -49,7 +51,7 @@ function handTotal(cards) {
   return total;
 }
 
-function create(ctx) {
+function createWith(meta, ctx) {
   let phase = 'betting';
   let deadline = null;
   let timer = null;
@@ -333,4 +335,4 @@ function create(ctx) {
   };
 }
 
-module.exports = { meta, create, internals: { handTotal, TIMING } };
+module.exports = defineGame(meta, createWith, { internals: { handTotal, TIMING } });
