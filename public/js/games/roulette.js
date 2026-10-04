@@ -1,3 +1,5 @@
+import { createDealer } from '../dealer.js';
+
 // Ruleta — client plugin (simple version: number ticker instead of an animated wheel).
 const RED = new Set([1, 3, 5, 7, 9, 12, 14, 16, 18, 19, 21, 23, 25, 27, 30, 32, 34, 36]);
 const colorOf = (n) => (n === 0 ? 'green' : RED.has(n) ? 'red' : 'black');
@@ -11,6 +13,7 @@ export default {
     let state = null;
     let ticker = null;
     let tickedRound = null;
+    const dealer = createDealer(api);
 
     const phaseEl = el('div', { class: 'rl__phase' });
     const timeEl = el('div', { class: 'rl__time' });
@@ -75,6 +78,7 @@ export default {
       el(
         'div',
         { class: 'rl' },
+        dealer,
         el('div', { class: 'rl__top felt' }, el('div', { class: 'rl__status' }, phaseEl, timeEl), numEl, histEl),
         el('div', { class: 'rl__scroll' }, board),
         el('div', { class: 'rl__controls' }, tray, undoBtn, clearBtn, rebetBtn, totalEl, readyBtn),
@@ -125,6 +129,8 @@ export default {
       if (s.phase === 'spinning') {
         if (tickedRound !== s.round) {
           tickedRound = s.round;
+          dealer.say('spin');
+          api.audio.play('spin');
           startTicker(s.deadline, s.number);
         }
       } else if (s.phase === 'result') {
@@ -189,10 +195,12 @@ export default {
         if (!mine) return;
         if (mine.net > 0) {
           api.audio.play(mine.net >= 500 ? 'bigwin' : 'win');
+          dealer.say(mine.net >= 500 ? 'bigwin' : 'win');
           api.ui.showBanner(root, { title: `+${formatChips(mine.net)}`, subtitle: `Salió el ${payload.number}`, kind: 'win' });
           if (mine.net >= 500) api.ui.celebrate({ kind: 'bigwin', amount: mine.net });
         } else if (mine.net < 0) {
           api.audio.play('lose');
+          dealer.say('lose');
           api.ui.showBanner(root, { title: `Salió el ${payload.number}`, subtitle: `${formatChips(mine.net)} fichas`, kind: 'lose' });
         }
       }
@@ -204,6 +212,7 @@ export default {
       destroy() {
         stopTicker();
         clearInterval(clock);
+        dealer.destroy();
       },
     };
   },

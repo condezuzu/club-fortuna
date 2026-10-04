@@ -1,4 +1,6 @@
 // Blackjack — client plugin.
+import { createDealer } from '../dealer.js';
+
 const STATUS = { stand: 'Se planta', bust: 'Se pasó', blackjack: 'Blackjack' };
 const RESULT = { win: 'Gana', lose: 'Pierde', push: 'Empate', blackjack: '¡Blackjack!' };
 
@@ -9,6 +11,8 @@ export default {
     const { el, clear, formatChips, createButton, createCard } = api.ui;
     let state = null;
     let seen = {};
+    let timers = [];
+    const dealer = createDealer(api);
 
     const statusEl = el('div', { class: 'bj__status' });
     const dealerHand = api.ui.createHand({ variant: 'spread' });
@@ -30,6 +34,7 @@ export default {
       el(
         'div',
         { class: 'bj' },
+        dealer,
         el(
           'div',
           { class: 'bj__table felt' },
@@ -49,7 +54,7 @@ export default {
         const node = createCard(card, { size: 'md' });
         if (i >= before) {
           node.dealIn((i - before) * 140);
-          api.audio.play('card');
+          timers.push(setTimeout(() => api.audio.play('card'), (i - before) * 140));
         }
         container.append(node);
       });
@@ -75,6 +80,11 @@ export default {
 
     function update(s) {
       if (s.phase === 'betting') seen = {};
+      if (state && state.phase === 'playing' && s.phase !== 'playing' && s.phase !== 'betting') api.audio.play('flip');
+      if (state && state.phase !== 'playing' && s.phase === 'playing') dealer.say('bet', 'Cartas repartidas. ¿Pide o se planta?');
+      const mineBefore = state && state.hands ? state.hands.find((h) => h.id === api.me().id) : null;
+      const mineNow = s.hands.find((h) => h.id === api.me().id);
+      if (mineNow && mineNow.status === 'bust' && (!mineBefore || mineBefore.status !== 'bust')) dealer.say('bust');
       state = s;
       const myId = api.me().id;
 
@@ -127,12 +137,15 @@ export default {
       const mine = payload.hands.find((h) => h.id === api.me().id);
       if (!mine) return;
       if (mine.net > 0) {
-        api.audio.play('win');
+        api.audio.play(mine.result === 'blackjack' ? 'bigwin' : 'win');
+        dealer.say(mine.result === 'blackjack' ? 'bigwin' : 'win');
         api.ui.showBanner(root, { title: RESULT[mine.result], subtitle: `+${formatChips(mine.net)} fichas`, kind: 'win' });
       } else if (mine.net < 0) {
         api.audio.play('lose');
+        if (mine.result !== 'lose' || Math.random() < 1) dealer.say('lose');
         api.ui.showBanner(root, { title: 'Gana la casa', subtitle: `${formatChips(mine.net)} fichas`, kind: 'lose' });
       } else {
+        dealer.say('push');
         api.ui.showBanner(root, { title: 'Empate', subtitle: 'Recuperás tu apuesta', kind: 'push' });
       }
     }
@@ -142,6 +155,8 @@ export default {
       event,
       destroy() {
         clearInterval(clock);
+        timers.forEach(clearTimeout);
+        dealer.destroy();
       },
     };
   },

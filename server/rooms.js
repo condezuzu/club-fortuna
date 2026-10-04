@@ -54,6 +54,9 @@ function normalizeRoomCode(value) {
   return CODE_PATTERN.test(code) ? code : null;
 }
 
+const economy = require('./economy');
+const nodeCrypto = require('node:crypto');
+
 class Room {
   /**
    * @param {object} options
@@ -172,6 +175,11 @@ class Room {
         conn: null,
         stats: emptyStats(),
         rescueAt: 0, // epoch ms from which the next rescue is allowed
+        debt: 0,
+        owned: [],
+        title: null,
+        emoteAt: 0,
+        challenge: null,
         giftAt: 0,
         seatTimer: null,
         absentTimer: null,
@@ -402,6 +410,136 @@ class Room {
     this.touch();
   }
 
+  /** Rescue minigame, step 1: hand out a sequence to memorise. */
+  rescueChallenge(id) {
+    const player = this._member(id);
+    const { RESCUE_THRESHOLD } = this.config;
+    if (player.balance + this.stakeOf(id) >= RESCUE_THRESHOLD) {
+      throw new ClubError(`El rescate es para cuando te quedás con menos de ${RESCUE_THRESHOLD} fichas.`, 'rescue_not_needed');
+    }
+    const now = this.clock.now();
+    if (now < player.rescueAt) {
+      const seconds = Math.ceil((player.rescueAt - now) / 1000);
+      throw new ClubError(`Esperá ${seconds} s para intentar otro rescate.`, 'rescue_cooldown');
+    }
+    const game = economy.RESCUE_GAME;
+    const sequence = [];
+    for (let i = 0; i < game.length; i += 1) sequence.push(nodeCrypto.randomInt(0, game.symbols));
+    player.challenge = { sequence, expires: now + game.ttlMs };
+    return { sequence, showMs: game.showMs };
+  }
+
+  /** Rescue minigame, step 2: the sequence must be repeated exactly. */
+  rescueAnswer(id, answer) {
+    const player = this._member(id);
+    const challenge = player.challenge;
+    player.challenge = null;
+    const now = this.clock.now();
+    if (!challenge || now > challenge.expires) throw new ClubError('El desafío venció. Pedí otro.', 'rescue_expired');
+    const ok =
+      Array.isArray(answer) &&
+      answer.length === challenge.sequence.length &&
+      challenge.sequence.every((value, i) => value === answer[i]);
+    if (!ok) {
+      player.rescueAt = now + economy.RESCUE_GAME.failCooldownMs;
+      this.addFeed('fail', `${player.name} falló el desafío del rescate. Qué papelón.`, { playerId: id });
+      throw new ClubError('Te equivocaste en la secuencia. Probá de nuevo en unos segundos.', 'rescue_failed');
+    }
+    this.rescue(id);
+  }
+
+  /** Borrow from the house: chips now, principal plus interest owed. */
+  loan(id, amount) {
+    const player = this._member(id);
+    if (!Number.isSafeInteger(amount) || amount < economy.LOAN_MIN) {
+      throw new ClubError(`El préstamo mínimo es de ${economy.LOAN_MIN} fichas.`, 'bad_amount');
+    }
+    const owed = Math.ceil(amount * (1 + economy.LOAN_INTEREST));
+    const limit = economy.loanLimit(economy.levelFor(player.stats.wagered));
+    if (player.debt + owed > limit) {
+      throw new ClubError(
+        `El prestamista no te fía tanto: tu límite de deuda es ${formatChips(limit)} fichas. Subí de nivel.`,
+        'loan_limit'
+      );
+    }
+    player.balance += amount;
+    player.buyIns += amount;
+    player.debt += owed;
+    this.addFeed(
+      'loan',
+      `${player.name} le pidió ${formatChips(amount)} fichas al prestamista (debe ${formatChips(player.debt)})`,
+      { playerId: id, amount }
+    );
+    this.touch();
+  }
+
+  /** Pay back part of the debt. */
+  repay(id, amount) {
+    const player = this._member(id);
+    if (!Number.isSafeInteger(amount) || amount < 1) throw new ClubError('El pago no es válido.', 'bad_amount');
+    if (player.debt === 0) throw new ClubError('No le debés nada a nadie. Por ahora.', 'no_debt');
+    const pay = Math.min(amount, player.debt, player.balance);
+    if (pay < 1) throw new ClubError('No tenés fichas para pagar.', 'insufficient');
+    this._payDebt(player, pay);
+  }
+
+  _payDebt(player, pay) {
+    player.balance -= pay;
+    player.buyIns -= pay;
+    player.debt -= pay;
+    if (player.debt === 0) {
+      this.addFeed('debt', `${player.name} saldó su deuda con el prestamista`, { playerId: player.id });
+    }
+    this.touch();
+  }
+
+  /** Called after every resolved bet: a share of each net win goes to the debt. */
+  _garnish(player, net) {
+    if (!player || !(player.debt > 0) || net <= 0) return;
+    const pay = Math.min(player.debt, player.balance, Math.ceil(net * economy.GARNISH));
+    if (pay > 0) this._payDebt(player, pay);
+  }
+
+  /** Buy a title or the VIP emote pack. Chips spent leave the game for good. */
+  buy(id, itemId) {
+    const player = this._member(id);
+    const item = itemId === economy.VIP.id ? economy.VIP : economy.TITLES.find((title) => title.id === itemId);
+    if (!item) throw new ClubError('Eso no está en la tienda.', 'bad_item');
+    if (player.owned.includes(item.id)) throw new ClubError('Eso ya es tuyo.', 'owned');
+    if (player.debt > 0) throw new ClubError('Primero pagale al prestamista. Después los lujos.', 'in_debt');
+    if (player.balance < item.price) throw new ClubError('No te alcanzan las fichas.', 'insufficient');
+    player.balance -= item.price;
+    player.buyIns -= item.price;
+    player.owned.push(item.id);
+    if (item !== economy.VIP) player.title = item.id;
+    this.addFeed('shop', `${player.name} compró "${item.name}" por ${formatChips(item.price)} fichas`, {
+      playerId: id,
+      amount: item.price,
+    });
+    this.touch();
+  }
+
+  equip(id, itemId) {
+    const player = this._member(id);
+    if (itemId !== null && !(player.owned.includes(itemId) && economy.TITLES.some((title) => title.id === itemId))) {
+      throw new ClubError('Ese título no es tuyo.', 'bad_item');
+    }
+    player.title = itemId;
+    this.touch();
+  }
+
+  /** Clash-style emote: flashes on everybody's screen. */
+  emote(id, emote) {
+    const player = this._member(id);
+    const vip = economy.VIP_EMOTES.includes(emote);
+    if (!vip && !economy.EMOTES.includes(emote)) throw new ClubError('Ese emote no existe.', 'bad_emote');
+    if (vip && !player.owned.includes(economy.VIP.id)) throw new ClubError('Ese emote es del pack VIP.', 'bad_emote');
+    const now = this.clock.now();
+    if (now < player.emoteAt) return;
+    player.emoteAt = now + economy.EMOTE_COOLDOWN_MS;
+    this._broadcast({ t: 'emote', from: player.id, name: player.name, avatar: player.avatar, emote });
+  }
+
   /** Append a line to the activity feed (last FEED_MAX entries are kept, oldest first). */
   addFeed(kind, text, extra) {
     const more = extra || {};
@@ -583,6 +721,7 @@ class Room {
       seated: () => table.seated.map((playerId) => this.players.get(playerId)).filter(Boolean),
       find: (playerId) => this.players.get(playerId) || null,
       touch: () => this.touch(),
+      settled: (record, net) => this._garnish(record, net),
       sync: () => {
         table.dirty = true;
         this.touch();
@@ -689,6 +828,11 @@ class Room {
         table: player.table,
         connected: player.connected,
         stats: { ...player.stats },
+        debt: player.debt || 0,
+        level: economy.levelFor(player.stats.wagered),
+        rank: economy.rankFor(economy.levelFor(player.stats.wagered)),
+        title: player.title ? (economy.TITLES.find((t) => t.id === player.title) || {}).name || null : null,
+        vip: Boolean(player.owned && player.owned.includes(economy.VIP.id)),
       });
     }
     const tables = {};
@@ -720,6 +864,19 @@ class Room {
         threshold: this.config.RESCUE_THRESHOLD,
         cooldownMs: this.config.RESCUE_COOLDOWN_MS,
         availableAt: viewer.rescueAt || 0,
+      },
+      economy: {
+        xpBase: economy.XP_BASE,
+        loanInterest: economy.LOAN_INTEREST,
+        loanMin: economy.LOAN_MIN,
+        loanLimit: economy.loanLimit(economy.levelFor(viewer.stats ? viewer.stats.wagered : 0)),
+        garnish: economy.GARNISH,
+        titles: economy.TITLES,
+        vip: economy.VIP,
+        emotes: economy.EMOTES,
+        vipEmotes: economy.VIP_EMOTES,
+        owned: viewer.owned || [],
+        equipped: viewer.title || null,
       },
     };
   }

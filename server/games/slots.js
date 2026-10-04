@@ -29,7 +29,7 @@ const SYMBOLS = Object.freeze([
 ]);
 const TOTAL_WEIGHT = SYMBOLS.reduce((sum, symbol) => sum + symbol.weight, 0);
 const TWO_CHERRIES_PAY = 2;
-const SPIN_MS = 2000;
+const SPIN_MS = 2800;
 const JACKPOT_SEED = 5000;
 const JACKPOT_FEED = 0.03;
 const RECENT_SIZE = 8;

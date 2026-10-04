@@ -192,6 +192,7 @@ function createContext({ meta, host, clock, rng, timeScale = 1, log = console })
       stats.won += won;
       if (net > stats.biggestWin) stats.biggestWin = net;
       host.touch();
+      if (typeof host.settled === 'function') host.settled(record, net);
 
       const longShot = wagered > 0 && won >= wagered * NOTABLE.multiple && net >= NOTABLE.multipleMinNet;
       if (disposed || (net < NOTABLE.net && !longShot)) return;

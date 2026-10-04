@@ -14,6 +14,7 @@ const DEFAULTS = Object.freeze({
   RESCUE_AMOUNT: 500, // chips handed by a rescue; counts as a buy-in
   RESCUE_THRESHOLD: 10, // rescue allowed while balance + stake < threshold
   RESCUE_COOLDOWN_MS: 30_000,
+  RESCUE_MINIGAME: 1, // the rescue must be earned by repeating a sequence (tests switch it off)
   GIFT_COOLDOWN_MS: 1_000,
 
   // Rooms

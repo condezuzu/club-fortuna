@@ -509,7 +509,36 @@ class Hub {
   }
 
   _rescue(conn, msg, session) {
-    this._requireRoom(session).rescue(session.id);
+    const room = this._requireRoom(session);
+    if (!this.config.RESCUE_MINIGAME) {
+      room.rescue(session.id);
+      return;
+    }
+    if (msg.answer === undefined) {
+      conn.send({ t: 'rescueChallenge', ...room.rescueChallenge(session.id) });
+      return;
+    }
+    room.rescueAnswer(session.id, msg.answer);
+  }
+
+  _loan(conn, msg, session) {
+    this._requireRoom(session).loan(session.id, msg.amount);
+  }
+
+  _repay(conn, msg, session) {
+    this._requireRoom(session).repay(session.id, msg.amount);
+  }
+
+  _buy(conn, msg, session) {
+    this._requireRoom(session).buy(session.id, msg.item);
+  }
+
+  _equip(conn, msg, session) {
+    this._requireRoom(session).equip(session.id, msg.item === null ? null : String(msg.item));
+  }
+
+  _emote(conn, msg, session) {
+    this._requireRoom(session).emote(session.id, msg.emote);
   }
 
   _ping(conn, msg) {
@@ -533,6 +562,11 @@ const HANDLERS = new Map([
   ['chat', Hub.prototype._chat],
   ['gift', Hub.prototype._gift],
   ['rescue', Hub.prototype._rescue],
+  ['loan', Hub.prototype._loan],
+  ['repay', Hub.prototype._repay],
+  ['buy', Hub.prototype._buy],
+  ['equip', Hub.prototype._equip],
+  ['emote', Hub.prototype._emote],
   ['ping', Hub.prototype._ping],
 ]);
 

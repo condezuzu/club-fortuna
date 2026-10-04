@@ -51,7 +51,7 @@ function createTestHub(options = {}) {
     registry,
     rng: options.rng,
     timeScale: options.timeScale || 1,
-    config: { RATE_BURST: 1e9, RATE_PER_SECOND: 1e9, GIFT_COOLDOWN_MS: 0, ...options.config },
+    config: { RATE_BURST: 1e9, RATE_PER_SECOND: 1e9, GIFT_COOLDOWN_MS: 0, RESCUE_MINIGAME: 0, ...options.config },
   });
 
   /**

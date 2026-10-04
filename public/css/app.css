@@ -152,3 +152,115 @@
   .hud__brand { display: none; }
   .bj__table, .bc__table { min-height: 0; }
 }
+
+/* ---- Dealer -------------------------------------------------------------- */
+.dealer { display: flex; align-items: center; gap: var(--space-3); }
+.dealer__face { width: 76px; flex: none; filter: drop-shadow(0 6px 10px rgba(0, 0, 0, 0.5)); }
+.dealer__face svg { display: block; width: 100%; height: auto; }
+.dealer__eye { animation: dealer-blink 4.5s infinite; transform-origin: center; transform-box: fill-box; }
+.dealer.is-talking .dealer__face { animation: dealer-bob 0.5s ease-in-out 3; }
+.dealer.is-laughing .dealer__face { animation: dealer-laugh 0.22s ease-in-out 8; }
+.dealer.is-laughing .dealer__mouth { stroke-width: 5; }
+.dealer__side { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.dealer__name { font-size: var(--fs-xs); letter-spacing: var(--tracking-caps); text-transform: uppercase; color: var(--text-gold); }
+.dealer__bubble { position: relative; padding: var(--space-2) var(--space-3); border-radius: var(--radius-md); background: var(--ivory-50); color: var(--text-on-ivory, #1b1420); font-family: var(--font-display); font-style: italic; font-size: var(--fs-md); box-shadow: var(--shadow-2); opacity: 0.55; transition: opacity var(--dur-2); }
+.dealer__bubble::before { content: ''; position: absolute; left: -7px; top: 50%; margin-top: -7px; border: 7px solid transparent; border-left: 0; border-right-color: var(--ivory-50); }
+.dealer.is-talking .dealer__bubble { opacity: 1; animation: bubble-pop 0.3s var(--ease-spring); }
+@keyframes dealer-blink { 0%, 94%, 100% { transform: scaleY(1); } 97% { transform: scaleY(0.1); } }
+@keyframes dealer-bob { 50% { transform: translateY(-3px) rotate(-2deg); } }
+@keyframes dealer-laugh { 50% { transform: translateY(-4px) rotate(3deg); } }
+@keyframes bubble-pop { from { transform: scale(0.85); } to { transform: scale(1); } }
+
+/* ---- HUD extras, members ------------------------------------------------- */
+.hud__level { padding: 2px 10px; border-radius: var(--radius-pill); border: 1px solid var(--gold-500); color: var(--gold-200); font-size: var(--fs-xs); font-weight: 700; white-space: nowrap; }
+.hud__debt { color: var(--oxblood-300); font-size: var(--fs-sm); font-weight: 700; white-space: nowrap; }
+.hud__balance.is-gain { animation: flash-gain 0.9s; }
+.hud__balance.is-loss { animation: flash-loss 0.9s; }
+@keyframes flash-gain { 0% { color: #7dff9b; transform: scale(1.35); text-shadow: 0 0 18px #7dff9b; } 100% { transform: scale(1); } }
+@keyframes flash-loss { 0% { color: #ff6b6b; transform: scale(0.85); } 100% { transform: scale(1); } }
+.member__avatar { position: relative; flex: none; }
+.member__crown { position: absolute; top: -13px; left: 50%; transform: translateX(-50%) rotate(-8deg); font-size: 15px; filter: drop-shadow(0 1px 2px #000); }
+.member__level { margin-left: 6px; padding: 0 6px; border-radius: var(--radius-pill); background: var(--ink-700); color: var(--gold-200); font-size: 10px; font-weight: 700; vertical-align: middle; }
+.member__title { font-size: var(--fs-xs); font-style: italic; color: var(--gold-300); }
+.member__money { display: flex; flex-direction: column; align-items: flex-end; }
+.member__debt { font-size: 10px; font-weight: 700; color: var(--oxblood-300); }
+.member--crown .member__name { color: var(--gold-200); }
+.member--elite { padding-inline: 6px; border-radius: var(--radius-sm); background: linear-gradient(90deg, rgba(212, 175, 55, 0.14), transparent); box-shadow: inset 2px 0 0 var(--gold-400); }
+.feed__item--fail, .feed__item--loan { color: var(--oxblood-300); }
+
+/* ---- Emotes -------------------------------------------------------------- */
+.emote-bar { display: flex; flex-wrap: wrap; gap: 4px; margin-top: var(--space-2); padding-top: var(--space-2); border-top: 1px solid var(--hairline); }
+.emote-btn { width: 34px; height: 34px; padding: 0; border: 1px solid var(--hairline-strong); border-radius: var(--radius-sm); background: var(--ink-800); font-size: 18px; cursor: pointer; transition: transform var(--dur-1); }
+.emote-btn:hover { transform: scale(1.2) rotate(-6deg); background: var(--ink-700); }
+.emote-pop { position: fixed; bottom: 12%; z-index: var(--z-toast); display: flex; flex-direction: column; align-items: center; pointer-events: none; animation: emote-rise 2.6s ease-out forwards; }
+.emote-pop__face { font-size: 84px; line-height: 1; filter: drop-shadow(0 8px 14px rgba(0, 0, 0, 0.6)); animation: emote-wobble 0.5s ease-in-out 4; }
+.emote-pop__name { margin-top: 4px; padding: 2px 10px; border-radius: var(--radius-pill); color: #fff; font-size: var(--fs-sm); font-weight: 700; text-shadow: 0 1px 2px #000; }
+@keyframes emote-rise { 0% { transform: translateY(40px) scale(0.2); opacity: 0; } 12% { transform: translateY(0) scale(1.15); opacity: 1; } 20% { transform: scale(1); } 80% { opacity: 1; } 100% { transform: translateY(-90px); opacity: 0; } }
+@keyframes emote-wobble { 50% { transform: rotate(9deg); } }
+
+/* ---- Rescue minigame, bank, shop ---------------------------------------- */
+.rescue { display: flex; flex-direction: column; align-items: center; gap: var(--space-3); text-align: center; }
+.rescue__lead, .bank__note { margin: 0; font-size: var(--fs-sm); color: var(--text-2); }
+.rescue__show { width: 120px; height: 120px; display: grid; place-items: center; border-radius: var(--radius-lg); background: var(--ink-800); border: 2px solid var(--gold-500); font-size: 24px; color: var(--text-2); transition: transform var(--dur-1); }
+.rescue__show.is-on { font-size: 80px; color: var(--ivory-50); transform: scale(1.08); box-shadow: var(--glow-gold); }
+.rescue__dots { min-height: 1.6em; font-size: 22px; letter-spacing: 2px; }
+.rescue__pad { display: grid; grid-template-columns: repeat(4, 1fr); gap: var(--space-2); width: 100%; }
+.rescue__key { height: 60px; border-radius: var(--radius-md); border: 1px solid var(--gold-500); background: var(--ivory-50); color: #1b1420; font-size: 34px; cursor: pointer; }
+.rescue__key:disabled { opacity: 0.35; cursor: default; }
+.rescue__key--red, .rescue__show.rescue__key--red.is-on { color: #c0202f; }
+.bank { display: flex; flex-direction: column; gap: var(--space-2); }
+.bank p { margin: 0; }
+.bank > p:first-child { font-family: var(--font-display); font-style: italic; color: var(--text-2); }
+.bank__row { display: flex; justify-content: space-between; gap: var(--space-3); font-size: var(--fs-sm); }
+.shop { display: flex; flex-direction: column; gap: var(--space-2); margin-top: var(--space-3); }
+.shop__row { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); padding: var(--space-2) var(--space-3); border-radius: var(--radius-md); background: var(--ink-800); border: 1px solid var(--hairline); }
+.shop__row strong { display: block; font-family: var(--font-display); color: var(--gold-200); }
+.shop__row small { color: var(--text-3); }
+.shop__owned { color: var(--win); font-weight: 700; }
+
+/* ---- Slots, the exciting version ---------------------------------------- */
+.sl__machine { position: relative; overflow: hidden; }
+.sl__lights { position: absolute; inset: 6px 6px auto; display: flex; justify-content: space-between; pointer-events: none; }
+.sl__lights i { width: 9px; height: 9px; border-radius: 50%; background: var(--gold-300); box-shadow: 0 0 8px var(--gold-300); animation: sl-light 1.2s infinite; }
+.sl__lights i:nth-child(odd) { animation-delay: 0.6s; }
+.sl__machine.is-spinning .sl__lights i { animation-duration: 0.3s; }
+.sl__machine.is-hot .sl__lights i { animation-duration: 0.12s; background: #ff5a5a; box-shadow: 0 0 12px #ff5a5a; }
+@keyframes sl-light { 50% { opacity: 0.2; } }
+.sl__jackpot-value { text-shadow: 0 0 18px rgba(212, 175, 55, 0.55); animation: sl-glow 2.4s ease-in-out infinite; }
+.sl__jackpot-value.is-bump { animation: sl-bump 0.5s; }
+@keyframes sl-glow { 50% { text-shadow: 0 0 34px rgba(255, 215, 90, 0.95); } }
+@keyframes sl-bump { 30% { transform: scale(1.18); color: #fff; } }
+.sl__window { position: relative; padding: var(--space-3); border-radius: var(--radius-lg); background: linear-gradient(180deg, #0b080e, #1c1420); border: 2px solid var(--gold-500); box-shadow: inset 0 0 24px #000, var(--shadow-3); }
+.sl__payline { position: absolute; left: 4px; right: 4px; top: 50%; height: 2px; background: rgba(255, 70, 70, 0.75); box-shadow: 0 0 10px rgba(255, 70, 70, 0.9); pointer-events: none; }
+.sl__reel { overflow: hidden; }
+.sl__glyph { display: block; }
+.sl__reel.is-rolling .sl__glyph { animation: sl-roll 0.14s linear infinite; filter: blur(2.5px); }
+.sl__reel.is-stop .sl__glyph { animation: sl-stop 0.35s var(--ease-spring); }
+.sl__reel.is-win { animation: sl-win 0.45s ease-in-out infinite; border-color: #fff; }
+@keyframes sl-roll { from { transform: translateY(-60%); } to { transform: translateY(60%); } }
+@keyframes sl-stop { 0% { transform: translateY(-45%); } 60% { transform: translateY(10%); } 100% { transform: translateY(0); } }
+@keyframes sl-win { 50% { box-shadow: 0 0 34px #ffd75a, inset 0 0 18px #ffd75a; transform: scale(1.06); } }
+.sl__machine.is-hot .sl__reel:nth-child(3) { box-shadow: 0 0 30px #ff5a5a, inset 0 0 18px rgba(0, 0, 0, 0.35); border-color: #ff5a5a; }
+.sl__machine.is-hot { animation: sl-shake 0.12s linear infinite; }
+.sl__machine.is-near { animation: sl-shake 0.1s linear 4; }
+.sl__machine.is-jackpot { animation: sl-jackpot 0.4s linear infinite; }
+@keyframes sl-shake { 25% { transform: translateX(-2px); } 75% { transform: translateX(2px); } }
+@keyframes sl-jackpot { 50% { filter: brightness(1.6) saturate(1.4); } }
+.sl__spin { min-width: 190px; font-size: var(--fs-xl); letter-spacing: 0.12em; animation: sl-pulse 1.6s ease-in-out infinite; }
+.sl__spin:disabled { animation: none; }
+@keyframes sl-pulse { 50% { box-shadow: 0 0 26px rgba(255, 215, 90, 0.8); transform: scale(1.03); } }
+
+/* ---- Poker & polish ------------------------------------------------------ */
+.pk__rules { margin: 0; font-size: var(--fs-xs); color: var(--text-3); text-align: center; }
+.bj__info { display: flex; flex-direction: column; align-items: center; gap: var(--space-1); }
+.bj__seat.is-win, .bj__seat.is-blackjack, .bj__seat.is-noqualify { border-color: var(--gold-300); box-shadow: var(--glow-gold); }
+.bj__seat.is-fold { opacity: 0.45; }
+.game-card { transition: transform var(--dur-2) var(--ease-out), box-shadow var(--dur-2); }
+.game-card:hover { transform: translateY(-5px); box-shadow: var(--shadow-4), var(--glow-gold); }
+.game-card__art .icon { transition: transform var(--dur-3) var(--ease-spring); }
+.game-card:hover .game-card__art .icon { transform: scale(1.25) rotate(-8deg); }
+.welcome__title, .goal__title { background: var(--grad-gold-text); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.goal__fill { position: relative; overflow: hidden; }
+.goal__fill::after { content: ''; position: absolute; inset: 0; background: linear-gradient(100deg, transparent 30%, rgba(255, 255, 255, 0.55) 50%, transparent 70%); animation: goal-sheen 2.6s infinite; }
+@keyframes goal-sheen { from { transform: translateX(-100%); } to { transform: translateX(100%); } }
+@media (prefers-reduced-motion: reduce) { .sl__machine, .sl__spin, .dealer__face, .goal__fill::after { animation: none !important; } }

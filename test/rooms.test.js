@@ -116,7 +116,7 @@ test('createRoom: code, snapshot shape and starting balance', () => {
   const room = ana.room();
   assert.match(room.code, /^[A-Z]{4}$/);
   for (const letter of room.code) assert.ok(CODE_ALPHABET.includes(letter));
-  assert.deepEqual(Object.keys(room).sort(), ['chat', 'code', 'feed', 'goal', 'players', 'rescue', 'tables', 'you']);
+  assert.deepEqual(Object.keys(room).sort(), ['chat', 'code', 'economy', 'feed', 'goal', 'players', 'rescue', 'tables', 'you']);
   assert.equal(room.you, ana.you.id);
   assert.deepEqual(room.players, [
     {
@@ -128,6 +128,11 @@ test('createRoom: code, snapshot shape and starting balance', () => {
       table: null,
       connected: true,
       stats: { rounds: 0, wagered: 0, won: 0, biggestWin: 0 },
+      debt: 0,
+      level: 0,
+      rank: 'Novato',
+      title: null,
+      vip: false,
     },
   ]);
   assert.deepEqual(room.tables, { vault: { seated: [] }, mint: { seated: [] } });

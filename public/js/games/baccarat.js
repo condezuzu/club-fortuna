@@ -1,4 +1,6 @@
 // Baccarat — client plugin.
+import { createDealer } from '../dealer.js';
+
 const SPOTS = [
   { id: 'player', label: 'Punto', pays: 'Paga 1 a 1' },
   { id: 'tie', label: 'Empate', pays: 'Paga 8 a 1' },
@@ -14,6 +16,8 @@ export default {
     const { el, clear, formatChips, createButton, createCard } = api.ui;
     let state = null;
     let dealt = false;
+    let timers = [];
+    const dealer = createDealer(api);
 
     const statusEl = el('div', { class: 'bc__status' });
     const histEl = el('div', { class: 'bc__history' });
@@ -43,6 +47,7 @@ export default {
       el(
         'div',
         { class: 'bc' },
+        dealer,
         el(
           'div',
           { class: 'bc__table felt' },
@@ -89,11 +94,13 @@ export default {
             clear(sides[key].hand);
             s.hands[key].forEach((card, i) => {
               const node = createCard(card, { size: 'md' });
-              node.dealIn(i * 500 + (key === 'banker' ? 250 : 0));
+              const delay = i * 500 + (key === 'banker' ? 250 : 0);
+              node.dealIn(delay);
+              timers.push(setTimeout(() => api.audio.play('card'), delay));
               sides[key].hand.append(node);
             });
           }
-          api.audio.play('card');
+          dealer.say('spin', 'Cartas sobre la mesa. Que gane el nueve.');
         }
         sides.player.total.textContent = s.phase === 'result' ? `· ${s.hands.playerTotal}` : '';
         sides.banker.total.textContent = s.phase === 'result' ? `· ${s.hands.bankerTotal}` : '';
@@ -126,9 +133,11 @@ export default {
       if (!mine) return;
       if (mine.net > 0) {
         api.audio.play(mine.net >= 500 ? 'bigwin' : 'win');
+        dealer.say(mine.net >= 500 ? 'bigwin' : 'win');
         api.ui.showBanner(root, { title: `+${formatChips(mine.net)}`, subtitle: WINNER[payload.winner], kind: 'win' });
       } else if (mine.net < 0) {
         api.audio.play('lose');
+        dealer.say('lose');
         api.ui.showBanner(root, { title: WINNER[payload.winner], subtitle: `${formatChips(mine.net)} fichas`, kind: 'lose' });
       } else {
         api.ui.showBanner(root, { title: WINNER[payload.winner], subtitle: 'Recuperás tu apuesta', kind: 'push' });
@@ -140,6 +149,8 @@ export default {
       event,
       destroy() {
         clearInterval(clock);
+        timers.forEach(clearTimeout);
+        dealer.destroy();
       },
     };
   },
