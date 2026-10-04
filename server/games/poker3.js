@@ -1,6 +1,7 @@
 'use strict';
 
 const { defineGame } = require('./_define');
+const { createReady } = require('./_ready');
 
 /**
  * Póker de 3 cartas — everybody plays their own hand against the dealer.
@@ -26,7 +27,7 @@ const meta = {
   maxBet: 1000,
 };
 
-const TIMING = Object.freeze({ betting: 15000, deciding: 25000, result: 8000 });
+const TIMING = Object.freeze({ betting: 20000, deciding: 25000, result: 8000 });
 const RANKS = ['2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K', 'A'];
 const SUITS = ['S', 'H', 'D', 'C'];
 const HAND_NAMES = ['Carta alta', 'Par', 'Color', 'Escalera', 'Trío', 'Escalera de color'];
@@ -66,6 +67,7 @@ function createWith(meta, ctx) {
   let dealer = [];
   let hands = [];
   const bets = new Map();
+  const ready = createReady(ctx);
 
   function arm(ms, fn) {
     if (timer) timer.cancel();
@@ -82,6 +84,7 @@ function createWith(meta, ctx) {
   function deal() {
     disarm();
     if (bets.size === 0) return;
+    ready.clear();
     const deck = [];
     for (const suit of SUITS) for (const rank of RANKS) deck.push({ rank, suit });
     const shoe = ctx.rng.shuffle(deck);
@@ -175,6 +178,7 @@ function createWith(meta, ctx) {
     if (total > meta.maxBet) throw ctx.error(`La apuesta máxima es de ${meta.maxBet} fichas.`);
     if (!ctx.debit(playerId, amount)) throw ctx.error('No te alcanzan las fichas.');
     bets.set(playerId, total);
+    ready.delete(playerId); // a new bet has to be confirmed again
     if (!timer) arm(TIMING.betting, deal);
     ctx.sync();
   }
@@ -185,7 +189,11 @@ function createWith(meta, ctx) {
     if (amount === 0) return;
     bets.delete(playerId);
     ctx.credit(playerId, amount);
-    if (bets.size === 0) disarm();
+    ready.delete(playerId);
+    if (bets.size === 0) {
+      disarm();
+      ready.clear();
+    }
     ctx.sync();
   }
 
@@ -194,13 +202,29 @@ function createWith(meta, ctx) {
     return { id, name: player ? player.name : '', avatar: player ? player.avatar : 0 };
   }
 
+  /**
+   * "Repartir" / "Listo". The cards come out once EVERYBODY seated has confirmed
+   * (somebody without a bet sits the hand out), or when the countdown ends.
+   */
+  function confirm(playerId, action) {
+    if (phase !== 'betting') throw ctx.error('La mano ya empezó.');
+    if (bets.size === 0) throw ctx.error('Primero poné tu apuesta.');
+    const wanted = action.ready === undefined ? true : action.ready;
+    if (typeof wanted !== 'boolean') throw ctx.error('Jugada inválida.');
+    ready.set(playerId, wanted);
+    if (ready.all()) deal();
+    else ctx.sync();
+  }
+
   return {
     onSit() {
       ctx.sync();
     },
 
-    onLeave() {
+    onLeave(playerId) {
+      ready.delete(playerId);
       if (phase === 'deciding') settleIfDone();
+      else if (phase === 'betting' && bets.size > 0 && ready.all()) deal();
       else ctx.sync();
     },
 
@@ -211,8 +235,8 @@ function createWith(meta, ctx) {
         case 'clear':
           return clear(playerId);
         case 'deal':
-          if (phase !== 'betting' || !bets.has(playerId)) throw ctx.error('Primero poné tu apuesta.');
-          return deal();
+        case 'ready':
+          return confirm(playerId, action);
         case 'play': {
           const hand = myHand(playerId);
           if (!ctx.debit(playerId, hand.ante)) throw ctx.error('No te alcanzan las fichas para jugar la mano.');
@@ -253,8 +277,11 @@ function createWith(meta, ctx) {
             payout: hand.payout,
           };
         }),
+        ready: ready.list(),
+        waiting: phase === 'betting' && bets.size > 0 ? ready.waiting() : [],
         you: {
           bet: bets.get(playerId) || 0,
+          ready: ready.has(playerId),
           deciding: Boolean(phase === 'deciding' && mine && !mine.decision),
         },
       };
@@ -270,4 +297,4 @@ function createWith(meta, ctx) {
   };
 }
 
-module.exports = defineGame(meta, createWith, { internals: { score, compare, HAND_NAMES } });
+module.exports = defineGame(meta, createWith, { internals: { score, compare, HAND_NAMES, TIMING } });

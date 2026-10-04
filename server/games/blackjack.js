@@ -1,6 +1,7 @@
 'use strict';
 
 const { defineGame } = require('./_define');
+const { createReady } = require('./_ready');
 
 /**
  * Blackjack — everybody at the table plays against the dealer.
@@ -25,7 +26,7 @@ const meta = {
   maxBet: 1000,
 };
 
-const TIMING = Object.freeze({ betting: 15000, turn: 25000, dealer: 2500, result: 7000 });
+const TIMING = Object.freeze({ betting: 20000, turn: 25000, dealer: 2500, result: 7000 });
 const RANKS = ['A', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K'];
 const SUITS = ['S', 'H', 'D', 'C'];
 const DECKS = 6;
@@ -60,6 +61,7 @@ function createWith(meta, ctx) {
   let hands = [];
   let turn = -1;
   const bets = new Map(); // playerId -> amount (betting phase only)
+  const ready = createReady(ctx);
 
   function draw() {
     if (shoe.length === 0) shoe = newShoe();
@@ -93,6 +95,7 @@ function createWith(meta, ctx) {
   function deal() {
     disarm();
     if (bets.size === 0) return;
+    ready.clear();
     if (shoe.length < RESHUFFLE_AT) shoe = newShoe();
     hands = [...bets].map(([id, bet]) => ({ id, bet, cards: [], status: 'playing', result: null, payout: 0 }));
     bets.clear();
@@ -177,7 +180,7 @@ function createWith(meta, ctx) {
         hand.result = 'lose';
       }
       if (hand.payout > 0) ctx.credit(hand.id, hand.payout);
-      ctx.report(hand.id, { wagered: hand.bet, won: hand.payout });
+      ctx.report(hand.id, { wagered: hand.bet, won: hand.payout, tag: hand.result === 'blackjack' ? 'blackjack' : undefined });
     }
     phase = 'result';
     arm(TIMING.result, reset);
@@ -211,6 +214,7 @@ function createWith(meta, ctx) {
     if (total > meta.maxBet) throw ctx.error(`La apuesta máxima es de ${meta.maxBet} fichas.`);
     if (!ctx.debit(playerId, amount)) throw ctx.error('No te alcanzan las fichas.');
     bets.set(playerId, total);
+    ready.delete(playerId); // a new bet has to be confirmed again
     if (!timer) arm(TIMING.betting, deal);
     ctx.sync();
   }
@@ -221,7 +225,11 @@ function createWith(meta, ctx) {
     if (amount === 0) return;
     bets.delete(playerId);
     ctx.credit(playerId, amount);
-    if (bets.size === 0) disarm();
+    ready.delete(playerId);
+    if (bets.size === 0) {
+      disarm();
+      ready.clear();
+    }
     ctx.sync();
   }
 
@@ -261,12 +269,31 @@ function createWith(meta, ctx) {
     return { id, name: player ? player.name : '', avatar: player ? player.avatar : 0 };
   }
 
+  /**
+   * "Repartir" / "Listo". The cards come out once EVERYBODY seated has confirmed
+   * (somebody without a bet sits the hand out), or when the countdown ends.
+   */
+  function confirm(playerId, action) {
+    if (phase !== 'betting') throw ctx.error('La mano ya empezó.');
+    if (bets.size === 0) throw ctx.error('Primero hacé tu apuesta.');
+    const wanted = action.ready === undefined ? true : action.ready;
+    if (typeof wanted !== 'boolean') throw ctx.error('Jugada inválida.');
+    ready.set(playerId, wanted);
+    if (ready.all()) deal();
+    else ctx.sync();
+  }
+
   return {
     onSit() {
       ctx.sync();
     },
 
     onLeave(playerId) {
+      ready.delete(playerId);
+      if (phase === 'betting' && bets.size > 0 && ready.all()) {
+        deal(); // whoever was holding up the hand left
+        return;
+      }
       if (phase === 'playing' && turn >= 0 && turn < hands.length && hands[turn].id === playerId) {
         hands[turn].status = 'stand';
         nextTurn();
@@ -282,8 +309,8 @@ function createWith(meta, ctx) {
         case 'clear':
           return clear(playerId);
         case 'deal':
-          if (phase !== 'betting' || !bets.has(playerId)) throw ctx.error('Primero hacé tu apuesta.');
-          return deal();
+        case 'ready':
+          return confirm(playerId, action);
         case 'hit':
           return hit(playerId);
         case 'stand':
@@ -317,8 +344,11 @@ function createWith(meta, ctx) {
           payout: hand.payout,
         })),
         turn: phase === 'playing' && turn >= 0 && turn < hands.length ? hands[turn].id : null,
+        ready: ready.list(),
+        waiting: phase === 'betting' && bets.size > 0 ? ready.waiting() : [],
         you: {
           bet: bets.get(playerId) || 0,
+          ready: ready.has(playerId),
           myTurn: Boolean(mine),
           canDouble: Boolean(mine && mine.cards.length === 2 && ctx.balance(playerId) >= mine.bet),
         },

@@ -1,6 +1,7 @@
 'use strict';
 
 const { defineGame } = require('./_define');
+const { createReady } = require('./_ready');
 
 /**
  * Baccarat (punto banco).
@@ -23,7 +24,7 @@ const meta = {
   maxBet: 2000,
 };
 
-const TIMING = Object.freeze({ betting: 15000, dealing: 4500, result: 6000 });
+const TIMING = Object.freeze({ betting: 20000, dealing: 4500, result: 6000 });
 const RANKS = ['A', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K'];
 const SUITS = ['S', 'H', 'D', 'C'];
 const SPOTS = ['player', 'banker', 'tie'];
@@ -60,6 +61,7 @@ function createWith(meta, ctx) {
   let results = [];
   const history = [];
   const bets = new Map(); // playerId -> { player, banker, tie }
+  const ready = createReady(ctx);
 
   function newShoe() {
     const cards = [];
@@ -89,6 +91,7 @@ function createWith(meta, ctx) {
   function deal() {
     disarm();
     if (bets.size === 0) return;
+    ready.clear();
     if (shoe.length < 20) shoe = newShoe();
     const player = [shoe.pop(), shoe.pop()];
     const banker = [shoe.pop(), shoe.pop()];
@@ -154,6 +157,7 @@ function createWith(meta, ctx) {
     if (!ctx.debit(playerId, amount)) throw ctx.error('No te alcanzan las fichas.');
     mine[action.spot] = onSpot;
     bets.set(playerId, mine);
+    ready.delete(playerId); // a new bet has to be confirmed again
     if (!timer) arm(TIMING.betting, deal);
     ctx.sync();
   }
@@ -164,8 +168,26 @@ function createWith(meta, ctx) {
     if (amount === 0) return;
     bets.delete(playerId);
     ctx.credit(playerId, amount);
-    if (bets.size === 0) disarm();
+    ready.delete(playerId);
+    if (bets.size === 0) {
+      disarm();
+      ready.clear();
+    }
     ctx.sync();
+  }
+
+  /**
+   * "Repartir" / "Listo". The cards come out once EVERYBODY seated has confirmed
+   * (somebody without a bet sits the hand out), or when the countdown ends.
+   */
+  function confirm(playerId, action) {
+    if (phase !== 'betting') throw ctx.error('La mano ya empezó.');
+    if (bets.size === 0) throw ctx.error('Primero hacé tu apuesta.');
+    const wanted = action.ready === undefined ? true : action.ready;
+    if (typeof wanted !== 'boolean') throw ctx.error('Jugada inválida.');
+    ready.set(playerId, wanted);
+    if (ready.all()) deal();
+    else ctx.sync();
   }
 
   return {
@@ -173,8 +195,10 @@ function createWith(meta, ctx) {
       ctx.sync();
     },
 
-    onLeave() {
-      ctx.sync();
+    onLeave(playerId) {
+      ready.delete(playerId);
+      if (phase === 'betting' && bets.size > 0 && ready.all()) deal();
+      else ctx.sync();
     },
 
     onAction(playerId, action) {
@@ -184,8 +208,8 @@ function createWith(meta, ctx) {
         case 'clear':
           return clear(playerId);
         case 'deal':
-          if (phase !== 'betting' || !bets.has(playerId)) throw ctx.error('Primero hacé tu apuesta.');
-          return deal();
+        case 'ready':
+          return confirm(playerId, action);
         default:
           throw ctx.error('Esa jugada no existe en el baccarat.');
       }
@@ -203,7 +227,9 @@ function createWith(meta, ctx) {
         hands,
         results,
         history: history.slice(),
-        you: { total: totalOf(playerId) },
+        ready: ready.list(),
+        waiting: phase === 'betting' && bets.size > 0 ? ready.waiting() : [],
+        you: { total: totalOf(playerId), ready: ready.has(playerId) },
       };
     },
 

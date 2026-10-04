@@ -12,6 +12,12 @@ const LETTER = { player: 'P', banker: 'B', tie: 'E' };
 export default {
   id: 'baccarat',
   icon: 'diamond',
+  help: [
+    "Apostá a Punto, a Banca o al Empate. Se reparten dos cartas a cada lado, y a veces una tercera según reglas fijas: vos no decidís nada más.",
+    "Gana el lado que quede más cerca de 9. Las figuras y los dieces valen 0, el as vale 1, y de la suma solo cuenta la última cifra (7 + 8 = 15, o sea 5).",
+    "Punto paga 1 a 1. Banca paga 0,95 a 1. Empate paga 8 a 1.",
+    "Si hay empate, las apuestas a Punto y a Banca se devuelven.",
+  ],
   art(ui) {
     return ui.el(
       'div',
@@ -60,7 +66,7 @@ export default {
       spotsRow.append(btn);
     }
     const clearBtn = createButton('Limpiar', { variant: 'ghost', icon: 'trash', onClick: () => api.send({ type: 'clear' }) });
-    const dealBtn = createButton('Repartir', { variant: 'primary', onClick: () => api.send({ type: 'deal' }) });
+    const dealBtn = createButton('Repartir', { variant: 'primary', onClick: () => api.send({ type: 'ready', ready: !(state && state.you.ready) }) });
 
     root.append(
       el(
@@ -83,11 +89,21 @@ export default {
       )
     );
 
+
+    /** Alone at the table "Repartir" deals; with company everybody confirms first. */
+    function paintConfirm(s, myBet) {
+      const company = api.players().filter((p) => p.table === api.meta.id && p.connected).length > 1;
+      dealBtn.disabled = s.phase !== 'betting' || s.bets.length === 0;
+      dealBtn.setLabel(s.you.ready ? 'Esperando al resto…' : myBet > 0 ? (company ? 'Listo' : 'Repartir') : 'Paso esta mano');
+      dealBtn.classList.toggle('is-on', Boolean(s.you.ready));
+    }
+    const waitingText = (s) => (s.ready.length && s.waiting.length ? ` · falta que confirme ${s.waiting.join(', ')}` : '');
+
     const clock = setInterval(() => {
       if (!state) return;
       if (state.phase === 'betting') {
         const left = state.deadline ? Math.max(0, Math.ceil((state.deadline - api.serverNow()) / 1000)) : null;
-        statusEl.textContent = left === null ? 'Hagan sus apuestas' : `Hagan sus apuestas · se reparte en ${left} s`;
+        statusEl.textContent = left === null ? 'Hagan sus apuestas' : `Hagan sus apuestas · se reparte en ${left} s${waitingText(state)}`;
       } else if (state.phase === 'dealing') {
         statusEl.textContent = 'Cartas sobre la mesa…';
       } else {
@@ -146,7 +162,7 @@ export default {
       for (const w of s.history.slice(0, 16)) histEl.append(el('span', { class: `bc__dot bc__dot--${w}` }, LETTER[w]));
 
       clearBtn.disabled = s.phase !== 'betting' || s.you.total === 0;
-      dealBtn.disabled = s.phase !== 'betting' || s.you.total === 0;
+      paintConfirm(s, s.you.total);
       tray.refresh();
     }
 

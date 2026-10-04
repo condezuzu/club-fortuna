@@ -14,9 +14,10 @@
  *
  * Round flow
  *   idle      nobody has chips on the layout.
- *   betting   starts when the first chip lands; a countdown runs. Every bettor
- *             can press "Listo"; when all seated bettors are ready the wheel
- *             spins right away.
+ *   betting   starts when the first chip lands; a countdown runs. Everybody
+ *             seated presses "Listo" (with or without chips on the layout);
+ *             when all of them have, the wheel spins right away. Otherwise it
+ *             spins when the countdown ends.
  *   spinning  bets are locked and the winning number is drawn immediately (so
  *             clients can animate the ball landing on it), but nothing is paid
  *             yet: balances must not spoil the animation.
@@ -266,12 +267,15 @@ function createWith(meta, ctx) {
     timer = ctx.after(TIMING.betting, spin);
   }
 
-  /** Spin as soon as every bettor still seated at the table is ready. */
+  /**
+   * Spin as soon as EVERYBODY seated at the table has confirmed, chips or no
+   * chips: nobody gets the wheel spun on them while still choosing a bet.
+   * Disconnected players and bettors who walked away do not hold it up.
+   */
   function spinIfEveryoneIsReady() {
-    if (phase !== 'betting') return;
-    const seated = new Set(ctx.seated().map((player) => player.id));
-    const waitingFor = [...bets.keys()].filter((id) => seated.has(id));
-    if (waitingFor.length > 0 && waitingFor.every((id) => ready.has(id))) spin();
+    if (phase !== 'betting' || bets.size === 0) return;
+    const seated = ctx.seated().filter((player) => player.connected);
+    if (seated.length > 0 && seated.every((player) => ready.has(player.id))) spin();
   }
 
   function spin() {
@@ -415,7 +419,6 @@ function createWith(meta, ctx) {
     const wanted = action.ready === undefined ? true : action.ready;
     if (typeof wanted !== 'boolean') throw ctx.error('Jugada inválida.');
     if (phase !== 'betting') throw ctx.error('Ahora no hay apuestas abiertas.');
-    if (!bets.has(playerId)) throw ctx.error('Primero poné una ficha en el paño.');
     if (wanted) ready.add(playerId);
     else ready.delete(playerId);
     ctx.sync();
@@ -499,7 +502,7 @@ function createWith(meta, ctx) {
           canUndo: open && !isReady && Boolean(stack && stack.length > 0),
           canClear: open && !isReady && bets.has(playerId),
           canRebet: open && !isReady && !bets.has(playerId) && Boolean(before && before.length > 0),
-          canReady: phase === 'betting' && bets.has(playerId),
+          canReady: phase === 'betting',
           rebetTotal: before ? sumOf(before) : 0,
         },
         history: history.slice(),

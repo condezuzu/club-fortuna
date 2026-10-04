@@ -6,7 +6,7 @@ Casino web cooperativo y multijugador con fichas ficticias. Armás una sala, inv
 
 ## Juegos
 
-- **Ruleta** europea con rueda animada
+- **Ruleta** europea con rueda animada y todas las apuestas: plenos, caballos, cuadros, calles, líneas, docenas, columnas y suertes sencillas
 - **Blackjack** (pedir, plantarse, doblar; toda la mesa contra el crupier)
 - **Tragamonedas** con pozo progresivo compartido por el equipo
 - **Baccarat** (Punto, Banca, Empate)
@@ -20,6 +20,8 @@ Cada juego tiene además su mesa **High Limit**, con apuestas mucho más altas, 
 - **Cuota del equipo:** las ganancias de todos contra la casa suman a una cuota. Se ve cuánto aportó cada jugador, y al cumplirla el bono se reparte según ese aporte.
 - Se pueden regalar fichas, pagar la deuda de un compañero o hacer llover fichas sobre todo el equipo.
 - Emotes, y cosas para tirarle a los demás (o al crupier).
+- **Duelos a cara o cruz** entre dos jugadores: cada uno pone lo mismo y una moneda decide.
+- **Podio de la sala:** el más rico, el pico más alto, la figura del equipo, el más endeudado…
 - Chat y novedades de la sala.
 
 ## Tu jugador
@@ -27,7 +29,8 @@ Cada juego tiene además su mesa **High Limit**, con apuestas mucho más altas, 
 - **Se guarda solo** en el navegador: fichas, nivel, deuda, compras, historial y avatar vuelven la próxima vez que entres desde el mismo navegador, aunque el servidor se haya reiniciado.
 - **Nivel personal** según lo que apostaste; sube tu límite con el prestamista.
 - **Avatar** personalizable (piel, pelo, ropa) que camina por la parte de abajo de la pantalla, con sombreros, lentes, mascotas y auras para comprar.
-- **Perfil** con estadísticas, pico de fichas e historial de las últimas jugadas. Tocá a cualquier jugador para ver el suyo.
+- **Perfil** con estadísticas, pico de fichas, logros e historial de las últimas jugadas. Tocá a cualquier jugador para ver el suyo.
+- **Logros:** 18 insignias por hazañas (un blackjack natural, cobrar 100 a 1, llegar al millón, ganar un duelo…).
 - **Prestamista:** presta con 20% de interés y se queda con el 30% de cada ganancia hasta que pagues.
 - **Rescate:** si te quedás en cero, hay que ganárselo repitiendo una secuencia de memoria.
 - **Tienda:** títulos, paños de otros colores para tus mesas, emotes VIP, propinas para el crupier.

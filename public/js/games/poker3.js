@@ -6,6 +6,13 @@ const RESULT = { win: 'Gana', lose: 'Pierde', push: 'Empate', fold: 'Se retiró'
 export default {
   id: 'poker3',
   icon: 'cards',
+  help: [
+    "Poné la apuesta inicial y recibís tres cartas. Si te gustan, \"Jugar\": ponés otra apuesta igual. Si no, \"Retirarse\": perdés la inicial y esperás la próxima mano.",
+    "El crupier necesita una Q o algo mejor para calificar. Si no califica, cobrás 1 a 1 la inicial y recuperás la otra apuesta.",
+    "Si califica, gana la mejor mano: las dos apuestas pagan 1 a 1. En un empate las recuperás.",
+    "Manos, de mayor a menor: escalera de color, trío, escalera, color, par, carta alta. Ojo: con tres cartas la escalera le gana al color.",
+    "Bono sobre la apuesta inicial si jugás la mano, gane quien gane: escalera x1, trío x4, escalera de color x5.",
+  ],
   art(ui) {
     return ui.el(
       'div',
@@ -39,7 +46,7 @@ export default {
       },
     });
     const clearBtn = createButton('Limpiar', { variant: 'ghost', icon: 'trash', onClick: () => api.send({ type: 'clear' }) });
-    const dealBtn = createButton('Repartir', { variant: 'primary', onClick: () => api.send({ type: 'deal' }) });
+    const dealBtn = createButton('Repartir', { variant: 'primary', onClick: () => api.send({ type: 'ready', ready: !(state && state.you.ready) }) });
     const betting = el('div', { class: 'bj__controls' }, tray, betBtn, clearBtn, dealBtn);
     const playBtn = createButton('Jugar', {
       variant: 'primary',
@@ -76,6 +83,16 @@ export default {
       )
     );
 
+
+    /** Alone at the table "Repartir" deals; with company everybody confirms first. */
+    function paintConfirm(s, myBet) {
+      const company = api.players().filter((p) => p.table === api.meta.id && p.connected).length > 1;
+      dealBtn.disabled = s.phase !== 'betting' || s.bets.length === 0;
+      dealBtn.setLabel(s.you.ready ? 'Esperando al resto…' : myBet > 0 ? (company ? 'Listo' : 'Repartir') : 'Paso esta mano');
+      dealBtn.classList.toggle('is-on', Boolean(s.you.ready));
+    }
+    const waitingText = (s) => (s.ready.length && s.waiting.length ? ` · falta que confirme ${s.waiting.join(', ')}` : '');
+
     function renderCards(container, key, cards) {
       const before = seen[key] || 0;
       const sig = cards.map((c) => (c ? c.rank + c.suit : '?')).join(',');
@@ -97,7 +114,7 @@ export default {
     const clock = setInterval(() => {
       if (!state) return;
       const left = state.deadline ? Math.max(0, Math.ceil((state.deadline - api.serverNow()) / 1000)) : null;
-      if (state.phase === 'betting') statusEl.textContent = state.bets.length ? `Apuestas · se reparte en ${left} s` : 'Poné tu apuesta inicial';
+      if (state.phase === 'betting') statusEl.textContent = state.bets.length ? `Apuestas · se reparte en ${left} s${waitingText(state)}` : 'Poné tu apuesta inicial';
       else if (state.phase === 'deciding') statusEl.textContent = state.you.deciding ? `¿Jugás o te retirás? · ${left} s` : `Esperando decisiones · ${left} s`;
       else statusEl.textContent = 'Resultado';
     }, 250);
@@ -153,7 +170,7 @@ export default {
       betting.hidden = s.phase !== 'betting';
       deciding.hidden = !s.you.deciding;
       clearBtn.disabled = s.you.bet === 0;
-      dealBtn.disabled = s.you.bet === 0;
+      paintConfirm(s, s.you.bet);
       betBtn.setLabel(s.you.bet ? `Apostar más (llevás ${formatChips(s.you.bet)})` : 'Apostar');
       tray.refresh();
     }

@@ -537,16 +537,39 @@ test('ready: the wheel spins as soon as every seated bettor is ready', () => {
   assert.equal(t.view('ana').you.ready, false, 'ready flags reset every round');
 });
 
-test('ready: spectators without chips do not hold up the spin', () => {
+test('ready: everybody seated has to confirm, chips or no chips', () => {
   const t = table({ ints: [9] });
   t.act('ana', bet('red', 10));
-  t.rejects('beto', { type: 'ready' }, /Primero poné una ficha/);
   t.act('ana', { type: 'ready' });
+  assert.equal(t.view('ana').phase, 'betting', 'Beto is seated and has not confirmed: nobody spins the wheel on him');
+  t.act('beto', { type: 'ready' }); // no chips on the layout: he sits this round out
   assert.equal(t.view('ana').phase, 'spinning');
+  t.advance(TIMING.spinning);
+  assert.equal(t.balance('beto'), 1000);
+});
+
+test('ready: without everybody confirmed, the countdown still spins the wheel', () => {
+  const t = table({ ints: [9] });
+  t.act('ana', bet('red', 10));
+  t.act('ana', { type: 'ready' });
+  t.advance(TIMING.betting - 1);
+  assert.equal(t.view('ana').phase, 'betting');
+  t.advance(1);
+  assert.equal(t.view('ana').phase, 'spinning');
+});
+
+test('ready: a player who left the table does not hold up the spin', () => {
+  const t = table({ ints: [9] });
+  t.act('ana', bet('red', 10));
+  t.act('beto', bet('black', 10));
+  t.leave('beto');
+  t.act('ana', { type: 'ready' });
+  assert.equal(t.view('ana').phase, 'spinning', 'only the players still seated have to confirm');
 });
 
 test('the old betting timer does not fire a second spin after an early one', () => {
   const t = table({ ints: [9, 11] });
+  t.leave('beto'); // Ana alone at the table: her "Listo" is enough
   t.act('ana', bet('red', 10));
   t.act('ana', { type: 'ready' });
   t.advance(TIMING.spinning + TIMING.result); // round 1 over
@@ -566,7 +589,7 @@ test('view flags tell the client which buttons to enable', () => {
     ready: false, canBet: true, canUndo: true, canClear: true, canRebet: false, canReady: true, rebetTotal: 0,
   });
   assert.deepEqual(t.view('beto').you, {
-    ready: false, canBet: true, canUndo: false, canClear: false, canRebet: false, canReady: false, rebetTotal: 0,
+    ready: false, canBet: true, canUndo: false, canClear: false, canRebet: false, canReady: true, rebetTotal: 0,
   });
   t.act('beto', bet('black', 10));
   t.act('ana', { type: 'ready' });

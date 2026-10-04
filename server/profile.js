@@ -34,6 +34,8 @@ function createProfile({ id, name, avatar, balance }) {
     theme: economy.DEFAULT_THEME,
     history: [],
     tips: 0,
+    badges: [],
+    daily: { at: 0, streak: 0 },
     seq: 0,
   };
 }
@@ -124,6 +126,11 @@ function restoreProfile(raw, config) {
     theme,
     history,
     tips: chipCount(raw.tips),
+    daily: {
+      at: raw.daily && Number.isFinite(raw.daily.at) && raw.daily.at > 0 ? raw.daily.at : 0,
+      streak: raw.daily ? Math.min(chipCount(raw.daily.streak), economy.DAILY.maxStreak) : 0,
+    },
+    badges: Array.isArray(raw.badges) ? economy.BADGES.map((badge) => badge.id).filter((id) => raw.badges.includes(id)) : [],
     seq: chipCount(raw.seq),
   };
 }
@@ -145,6 +152,8 @@ function persistView(profile, stake) {
     theme: profile.theme,
     history: profile.history,
     tips: profile.tips,
+    badges: profile.badges,
+    daily: profile.daily,
   };
 }
 

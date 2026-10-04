@@ -154,6 +154,11 @@ class Room {
     this.chat = [];
     this.feedSeq = 0;
     this.chatSeq = 0;
+    /** @type {Map<number, any>} pending coin-flip duels by id */
+    this.duels = new Map();
+    this.duelSeq = 0;
+    /** Achievements unlocked since the last flush: [player, badge] */
+    this._badgeQueue = [];
     this.createdAt = clock.now();
     this.destroyed = false;
 
@@ -515,6 +520,7 @@ class Room {
       throw new ClubError('Te equivocaste en la secuencia. Probá de nuevo en unos segundos.', 'rescue_failed');
     }
     this.rescue(id);
+    this._award(player, 'rescued');
   }
 
   /** Borrow from the house: chips now, principal plus interest owed. */
@@ -558,6 +564,7 @@ class Room {
     player.debt -= pay;
     if (player.debt === 0) {
       this.addFeed('debt', `${player.name} saldó su deuda con el prestamista`, { playerId: player.id });
+      this._award(player, 'debtfree');
     }
     this.touch();
   }
@@ -587,7 +594,10 @@ class Room {
     player.owned.push(item.id);
     if (item.kind === 'title') player.title = item.id;
     else if (item.kind === 'theme') player.profile.theme = item.id;
-    else if (item.kind === 'cosmetic') player.profile.look = { ...player.profile.look, [item.slot]: item.key };
+    else if (item.kind === 'cosmetic') {
+      player.profile.look = { ...player.profile.look, [item.slot]: item.key };
+      this._award(player, 'dressed');
+    }
     player.needsRoom = true;
     this.addFeed('shop', `${player.name} compró "${item.name}" por ${formatChips(item.price)} fichas`, {
       playerId: id,
@@ -650,6 +660,7 @@ class Room {
       amount: cost,
     });
     this._broadcast({ t: 'rain', from: player.id, name: player.name, each });
+    this._award(player, 'rainmaker');
     this.touch();
   }
 
@@ -662,12 +673,137 @@ class Room {
     if (player.balance < amount) throw new ClubError('No te alcanzan las fichas.', 'insufficient');
     this._spend(player, amount);
     player.profile.tips += amount;
+    if (player.profile.tips >= 1000) this._award(player, 'generous');
     this.addFeed('tip', `${player.name} le dejó ${formatChips(amount)} fichas de propina a Don Fortunato`, {
       playerId: id,
       amount,
     });
     this._broadcast({ t: 'tip', from: player.id, name: player.name, amount });
     this.touch();
+  }
+
+  /** The streak a player would be on if the daily bonus were claimed now. */
+  _dailyStreak(player, now) {
+    const daily = player.profile.daily;
+    const alive = daily.at > 0 && now - daily.at <= economy.DAILY.streakMs;
+    return alive ? Math.min(daily.streak + 1, economy.DAILY.maxStreak) : 1;
+  }
+
+  /** Claim the daily bonus (booked as a buy-in: it is not the team's profit). */
+  daily(id) {
+    const player = this._member(id);
+    const now = this.clock.now();
+    const daily = player.profile.daily;
+    const wait = daily.at + economy.DAILY.everyMs - now;
+    if (daily.at > 0 && wait > 0) {
+      const hours = Math.ceil(wait / 3600000);
+      throw new ClubError(`Tu próximo bono diario está en ${hours} h.`, 'daily_wait');
+    }
+    const streak = this._dailyStreak(player, now);
+    const bonus = economy.dailyBonus(streak);
+    daily.at = now;
+    daily.streak = streak;
+    player.balance += bonus;
+    player.buyIns += bonus;
+    player.needsRoom = true;
+    this.addFeed('daily', `${player.name} cobró su bono diario: ${formatChips(bonus)} fichas`, { playerId: id, amount: bonus });
+    this.touch();
+    return { bonus, streak };
+  }
+
+  /**
+   * Challenge a teammate to a coin flip for `amount` chips each. Nothing is
+   * held until the other side accepts; the challenge expires on its own.
+   */
+  duel(id, toId, amount) {
+    const player = this._member(id);
+    const target = typeof toId === 'string' ? this.players.get(toId) : undefined;
+    const { min, max, ttlMs, cooldownMs } = economy.DUEL;
+    if (!target || !target.present || target === player) throw new ClubError('Ese jugador no está en la sala.', 'bad_target');
+    if (!target.connected) throw new ClubError(`${target.name} está desconectado.`, 'bad_target');
+    if (!Number.isSafeInteger(amount) || amount < min || amount > max) {
+      throw new ClubError(`Los duelos van de ${formatChips(min)} a ${formatChips(max)} fichas.`, 'bad_amount');
+    }
+    if (player.balance < amount) throw new ClubError('No te alcanzan las fichas para ese duelo.', 'insufficient');
+    if (target.balance < amount) throw new ClubError(`${target.name} no tiene tantas fichas.`, 'insufficient');
+    const now = this.clock.now();
+    if (now < (player.duelAt || 0)) throw new ClubError('Esperá un momento antes de retar de nuevo.', 'duel_cooldown');
+    for (const pending of this.duels.values()) {
+      if (pending.from === id) throw new ClubError('Ya tenés un duelo esperando respuesta.', 'duel_pending');
+      if (pending.to === toId) throw new ClubError(`${target.name} está pensando otro duelo.`, 'duel_pending');
+    }
+    player.duelAt = now + cooldownMs;
+    const duelId = (this.duelSeq += 1);
+    const duel = { id: duelId, from: id, to: toId, amount, timer: null };
+    duel.timer = this.clock.setTimeout(() => this._closeDuel(duel, 'expired'), ttlMs);
+    this.duels.set(duelId, duel);
+    if (target.conn) {
+      target.conn.send({ t: 'duel', duel: { id: duelId, from: id, name: player.name, avatar: player.avatar, amount, ttlMs } });
+    }
+    if (player.conn) player.conn.send({ t: 'duelSent', id: duelId, to: toId, name: target.name, amount });
+  }
+
+  /** The challenged player answers. Accepting flips the coin right away. */
+  duelAnswer(id, duelId, accept) {
+    const duel = this.duels.get(duelId);
+    if (!duel || duel.to !== id) throw new ClubError('Ese duelo ya no está en pie.', 'duel_gone');
+    if (accept !== true) {
+      this._closeDuel(duel, 'declined');
+      return;
+    }
+    const challenger = this.players.get(duel.from);
+    const target = this._member(id);
+    if (!challenger || !challenger.present) {
+      this._closeDuel(duel, 'expired');
+      throw new ClubError('El que te retó ya se fue.', 'duel_gone');
+    }
+    if (challenger.balance < duel.amount || target.balance < duel.amount) {
+      this._closeDuel(duel, 'broke');
+      throw new ClubError('Alguno de los dos ya no tiene las fichas del duelo.', 'insufficient');
+    }
+    this.clock.clearTimeout(duel.timer);
+    this.duels.delete(duel.id);
+    const challengerWins = this.rng.int(0, 2) === 0;
+    const winner = challengerWins ? challenger : target;
+    const loser = challengerWins ? target : challenger;
+    // Chips change hands between teammates: buy-ins follow, so nobody's contribution to the quota moves.
+    loser.balance -= duel.amount;
+    loser.buyIns -= duel.amount;
+    winner.balance += duel.amount;
+    winner.buyIns += duel.amount;
+    const at = this.clock.now();
+    for (const [who, won] of [
+      [winner, duel.amount * 2],
+      [loser, 0],
+    ]) {
+      who.profile.history.unshift({ t: at, g: 'Duelo', w: duel.amount, r: won });
+      if (who.profile.history.length > economy.HISTORY_MAX) who.profile.history.length = economy.HISTORY_MAX;
+    }
+    this._award(winner, 'duelist');
+    this.addFeed('duel', `${winner.name} le ganó ${chipsText(duel.amount)} a ${loser.name} en un duelo`, {
+      playerId: winner.id,
+      targetId: loser.id,
+      amount: duel.amount,
+    });
+    this._broadcast({
+      t: 'duelResult',
+      id: duel.id,
+      amount: duel.amount,
+      winner: { id: winner.id, name: winner.name, avatar: winner.avatar },
+      loser: { id: loser.id, name: loser.name, avatar: loser.avatar },
+    });
+    this.touch();
+  }
+
+  /** A duel that will not happen: tell both sides why. */
+  _closeDuel(duel, reason) {
+    if (!this.duels.delete(duel.id)) return;
+    this.clock.clearTimeout(duel.timer);
+    const challenger = this.players.get(duel.from);
+    const target = this.players.get(duel.to);
+    const message = { t: 'duelOff', id: duel.id, reason, name: target ? target.name : '' };
+    if (challenger && challenger.conn) challenger.conn.send(message);
+    if (target && target.conn && reason !== 'declined') target.conn.send(message);
   }
 
   /** Pay (part of) a teammate's debt. */
@@ -708,9 +844,25 @@ class Room {
       peak: target.profile.peak,
       debt: target.debt,
       tips: target.profile.tips,
+      badges: target.profile.badges.slice(),
       net: this._netOf(target, this.stakeOf(target.id)),
       history: target.profile.history.slice(0, economy.HISTORY_MAX),
     };
+  }
+
+  /**
+   * Unlock an achievement (once per player). The room reads about it in the
+   * feed; the player gets a private `badge` message at the end of the flush.
+   */
+  _award(player, badgeId) {
+    const badges = player.profile.badges;
+    if (badges.includes(badgeId)) return;
+    const badge = economy.BADGES.find((entry) => entry.id === badgeId);
+    if (!badge) return;
+    badges.push(badgeId);
+    this._badgeQueue.push([player, badge]);
+    this.addFeed('badge', `${player.name} desbloqueó un logro: ${badge.name}`, { playerId: player.id });
+    this.touch();
   }
 
   /** Every resolved bet: goes to the player's history, and a share of a net win to the debt. */
@@ -719,6 +871,15 @@ class Room {
     history.unshift({ t: this.clock.now(), g: meta.name, w: result.wagered, r: result.won });
     if (history.length > economy.HISTORY_MAX) history.length = economy.HISTORY_MAX;
     this._garnish(record, result.net);
+    if (result.wagered > 0) {
+      if (result.won >= result.wagered * 10) this._award(record, 'x10');
+      if (result.won >= result.wagered * 100) this._award(record, 'x100');
+      if (result.won >= result.wagered * 1000) this._award(record, 'x1000');
+    }
+    if (result.tag === 'blackjack' || result.tag === 'jackpot') this._award(record, result.tag);
+    if (record.stats.rounds >= 100) this._award(record, 'rounds100');
+    if (record.stats.rounds >= 1000) this._award(record, 'rounds1000');
+    if (economy.levelFor(record.stats.wagered) >= 10) this._award(record, 'level10');
   }
 
   /** Clash-style emote: flashes on everybody's screen. */
@@ -793,6 +954,9 @@ class Room {
     for (const player of this.players.values()) {
       const worth = player.balance + (stakes.get(player.id) || 0) - player.debt;
       if (worth > player.profile.peak) player.profile.peak = worth;
+      for (const [chips, badgeId] of economy.PEAK_BADGES) {
+        if (player.profile.peak >= chips) this._award(player, badgeId);
+      }
     }
 
     // 1. Room snapshot, skipped when nothing in it changed.
@@ -832,6 +996,15 @@ class Room {
     // 4. Team celebration.
     if (celebration) this._broadcast(celebration);
 
+    // 5. Achievements, to their owners.
+    if (this._badgeQueue.length > 0) {
+      const queue = this._badgeQueue;
+      this._badgeQueue = [];
+      for (const [player, badge] of queue) {
+        if (player.conn) player.conn.send({ t: 'badge', badge });
+      }
+    }
+
     this.onFlushed(this);
   }
 
@@ -844,6 +1017,8 @@ class Room {
       this._idleTimer = null;
     }
     for (const player of this.players.values()) this._clearPlayerTimers(player);
+    for (const duel of this.duels.values()) this.clock.clearTimeout(duel.timer);
+    this.duels.clear();
     for (const table of this.tables.values()) {
       table.context.dispose();
       if (typeof table.instance.dispose === 'function') {
@@ -1028,6 +1203,7 @@ class Room {
       { amount: pool }
     );
     this.level = reached;
+    if (mvp) this._award(present[top], 'mvp');
     return { t: 'celebrate', kind: 'level', level: reached, title: goal.titleFor(reached), bonus: perHead, bonuses, mvp, profit };
   }
 
@@ -1053,6 +1229,8 @@ class Room {
         look: player.profile.look,
         net: this._netOf(player, stakes.get(player.id) || 0),
         peak: player.profile.peak,
+        tips: player.profile.tips,
+        badges: player.profile.badges.length,
       });
     }
     const tables = {};
@@ -1091,6 +1269,13 @@ class Room {
         title: viewer.title || null,
         theme: (viewer.profile && viewer.profile.theme) || economy.DEFAULT_THEME,
       },
+      daily: viewer.profile
+        ? {
+            availableAt: viewer.profile.daily.at > 0 ? viewer.profile.daily.at + economy.DAILY.everyMs : 0,
+            streak: this._dailyStreak(viewer, this.clock.now()),
+            bonus: economy.dailyBonus(this._dailyStreak(viewer, this.clock.now())),
+          }
+        : null,
     };
   }
 

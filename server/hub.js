@@ -664,6 +664,18 @@ class Hub {
     this._requireRoom(session).repayFor(session.id, msg.to, msg.amount);
   }
 
+  _daily(conn, msg, session) {
+    conn.send({ t: 'daily', ...this._requireRoom(session).daily(session.id) });
+  }
+
+  _duel(conn, msg, session) {
+    this._requireRoom(session).duel(session.id, msg.to, msg.amount);
+  }
+
+  _duelAnswer(conn, msg, session) {
+    this._requireRoom(session).duelAnswer(session.id, msg.id, msg.accept);
+  }
+
   _profileOf(conn, msg, session) {
     conn.send({ t: 'profileOf', player: this._requireRoom(session).profileOf(session.id, msg.id) });
   }
@@ -700,6 +712,9 @@ const HANDLERS = new Map([
   ['tip', Hub.prototype._tip],
   ['repayFor', Hub.prototype._repayFor],
   ['profileOf', Hub.prototype._profileOf],
+  ['daily', Hub.prototype._daily],
+  ['duel', Hub.prototype._duel],
+  ['duelAnswer', Hub.prototype._duelAnswer],
   ['ping', Hub.prototype._ping],
 ]);
 

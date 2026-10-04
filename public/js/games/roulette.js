@@ -9,6 +9,12 @@ const PHASE_TEXT = { idle: 'Hagan sus apuestas', betting: 'Hagan sus apuestas', 
 export default {
   id: 'roulette',
   icon: 'star',
+  help: [
+    "Elegí una ficha y tocá el paño para apostar. Cuando todos los que apostaron tocan \"Listo\" (o se acaba el tiempo), gira la rueda.",
+    "Para apostar a varios números juntos tocá las líneas entre ellos: entre dos números es un caballo, donde se cruzan cuatro es un cuadro, al pie de una columna de tres es una calle, y entre dos calles, una línea.",
+    "Pagos: pleno (un número) 35 a 1 · caballo (dos) 17 a 1 · calle (tres) 11 a 1 · cuadro (cuatro) 8 a 1 · línea (seis) 5 a 1 · docena o columna 2 a 1 · rojo o negro, par o impar, 1-18 o 19-36: 1 a 1.",
+    "Si sale el cero pierden las docenas, las columnas y las suertes sencillas.",
+  ],
   art() {
     const wheel = createWheel({});
     wheel.settle(17);
@@ -88,6 +94,60 @@ export default {
       addSpot(id, label, `rl__spot--out ${cls}`, { gridColumn: `${2 + i * 2} / span 2`, gridRow: '5' });
     });
 
+    // Inside bets live on the lines of the layout: between two numbers (split), where four meet
+    // (corner), at the foot of a column of three (street) or between two of those (six line).
+    const col = (n) => Math.ceil(n / 3) + 1;
+    const row = (n) => 3 - ((n - 1) % 3);
+    function addZone(kind, numbers, shape, style, name) {
+      const sorted = numbers.slice().sort((a, b) => a - b);
+      const id = `${kind}:${sorted.join('-')}`;
+      const chips = el('span', { class: 'rl__chips' });
+      const cover = (on) => {
+        for (const n of sorted) spots.get(`straight:${n}`).btn.classList.toggle('is-covered', on);
+      };
+      const btn = el(
+        'button',
+        {
+          class: `rl__zone rl__zone--${shape}`,
+          type: 'button',
+          style,
+          title: `${name}: ${sorted.join(', ')}`,
+          'aria-label': `${name} ${sorted.join(', ')}`,
+          onClick: () => {
+            api.fx.bet(tray, btn, tray.value);
+            api.send({ type: 'bet', spot: id, amount: tray.value });
+          },
+          onMouseenter: () => cover(true),
+          onMouseleave: () => cover(false),
+          onFocus: () => cover(true),
+          onBlur: () => cover(false),
+        },
+        chips
+      );
+      spots.set(id, { btn, chips });
+      board.append(btn);
+    }
+    for (let n = 1; n <= 36; n += 1) {
+      if (n <= 33) addZone('split', [n, n + 3], 'h', { gridColumn: `${col(n)} / span 2`, gridRow: String(row(n)) }, 'Caballo (17 a 1)');
+      if (n % 3 !== 0) {
+        addZone('split', [n, n + 1], 'v', { gridColumn: String(col(n)), gridRow: `${row(n) - 1} / span 2` }, 'Caballo (17 a 1)');
+        if (n <= 32) {
+          addZone('corner', [n, n + 1, n + 3, n + 4], 'dot', { gridColumn: `${col(n)} / span 2`, gridRow: `${row(n) - 1} / span 2` }, 'Cuadro (8 a 1)');
+        }
+      }
+    }
+    for (let k = 0; k < 12; k += 1) {
+      const first = k * 3 + 1;
+      addZone('street', [first, first + 1, first + 2], 'v', { gridColumn: String(k + 2), gridRow: '3 / span 2' }, 'Calle (11 a 1)');
+      if (k < 11) {
+        addZone('sixline', [first, first + 1, first + 2, first + 3, first + 4, first + 5], 'dot', { gridColumn: `${k + 2} / span 2`, gridRow: '3 / span 2' }, 'Línea (5 a 1)');
+      }
+    }
+    for (const n of [1, 2, 3]) addZone('split', [0, n], 'h', { gridColumn: '1 / span 2', gridRow: String(row(n)) }, 'Caballo con el cero (17 a 1)');
+    addZone('street', [0, 1, 2], 'dot', { gridColumn: '1 / span 2', gridRow: '2 / span 2' }, 'Trío con el cero (11 a 1)');
+    addZone('street', [0, 2, 3], 'dot', { gridColumn: '1 / span 2', gridRow: '1 / span 2' }, 'Trío con el cero (11 a 1)');
+    addZone('corner', [0, 1, 2, 3], 'dot', { gridColumn: '1 / span 2', gridRow: '3 / span 2' }, 'Los cuatro primeros (8 a 1)');
+
     const tray = api.ui.createChipTray({ values, value: values[1], onChange() {}, getBalance: () => api.me().balance });
     const undoBtn = createButton('Deshacer', { variant: 'ghost', size: 'sm', icon: 'undo', onClick: () => api.send({ type: 'undo' }) });
     const clearBtn = createButton('Limpiar', { variant: 'ghost', size: 'sm', icon: 'trash', onClick: () => api.send({ type: 'clear' }) });
@@ -114,7 +174,12 @@ export default {
 
     const clock = setInterval(() => {
       if (state && state.phase === 'betting' && state.deadline) {
-        timeEl.textContent = `Gira en ${Math.max(0, Math.ceil((state.deadline - api.serverNow()) / 1000))} s`;
+        const missing = state.players.filter((p) => p.seated && p.connected && !p.ready).map((p) => p.name);
+        const left = Math.max(0, Math.ceil((state.deadline - api.serverNow()) / 1000));
+        timeEl.textContent =
+          missing.length && missing.length < state.players.filter((p) => p.seated).length
+            ? `Gira en ${left} s · falta que confirme ${missing.join(', ')}`
+            : `Gira en ${left} s, o cuando todos confirmen`;
       } else {
         timeEl.textContent = '';
       }
@@ -185,13 +250,13 @@ export default {
       clearBtn.disabled = !s.you.canClear;
       rebetBtn.disabled = !s.you.canRebet;
       readyBtn.disabled = !s.you.canReady && !s.you.ready;
-      readyBtn.setLabel(s.you.ready ? 'Esperando al resto…' : '¡Listo, que gire!');
+      readyBtn.setLabel(s.you.ready ? 'Esperando al resto…' : s.totals.you > 0 ? '¡Listo, que gire!' : 'Paso esta ronda');
       totalEl.textContent = `Tu apuesta: ${formatChips(s.totals.you)}`;
       tray.refresh();
 
       clear(teamEl);
       const showResult = s.phase === 'result' && s.result;
-      const rows = showResult ? s.result.results : s.players.filter((p) => p.total > 0);
+      const rows = showResult ? s.result.results : s.players.filter((p) => p.total > 0 || (p.seated && s.phase === 'betting'));
       for (const p of rows) {
         teamEl.append(
           el(
@@ -201,7 +266,7 @@ export default {
             `${p.name} `,
             showResult
               ? el('strong', { class: p.net >= 0 ? 'is-up' : 'is-down' }, `${p.net >= 0 ? '+' : ''}${formatChips(p.net)}`)
-              : el('strong', null, `${formatChips(p.total)}${p.ready ? ' ✓' : ''}`)
+              : el('strong', { class: p.ready ? 'is-up' : '' }, `${p.total > 0 ? formatChips(p.total) : 'sin apuesta'}${p.ready ? ' ✓' : ''}`)
           )
         );
       }

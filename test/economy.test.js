@@ -299,6 +299,143 @@ test('throw, rain and tip cost chips, reach the whole room and leave the profit 
   assert.deepEqual(ana.room().players.map((player) => player.net), [2000, 0, 0]);
 });
 
+test('duel: a coin flip between two members moves chips but not the contributions', () => {
+  const [club, ana, beto, caro] = roomWith(['Ana', 'Beto', 'Caro']);
+  ana.send({ t: 'duel', to: beto.you.id, amount: 300 });
+  assert.deepEqual(beto.last('duel').duel, {
+    id: 1,
+    from: ana.you.id,
+    name: 'Ana',
+    avatar: ana.you.avatar,
+    amount: 300,
+    ttlMs: economy.DUEL.ttlMs,
+  });
+  assert.equal(ana.last('duelSent').name, 'Beto');
+  assert.equal(caro.last('duel'), undefined, 'a challenge is between two');
+  assert.equal(ana.me().balance, 1000, 'nothing is held before the answer');
+
+  caro.send({ t: 'duelAnswer', id: 1, accept: true });
+  assert.equal(caro.error().code, 'duel_gone', 'only the challenged player can answer');
+  ana.send({ t: 'duel', to: caro.you.id, amount: 10 });
+  assert.equal(ana.error().code, 'duel_cooldown');
+
+  beto.send({ t: 'duelAnswer', id: 1, accept: true });
+  const result = caro.last('duelResult');
+  assert.equal(result.amount, 300);
+  const winner = result.winner.id === ana.you.id ? ana : beto;
+  const loser = winner === ana ? beto : ana;
+  assert.equal(winner.me().balance, 1300);
+  assert.equal(loser.me().balance, 700);
+  assert.deepEqual(ana.room().players.map((player) => player.net), [0, 0, 0]);
+  assert.equal(ana.room().goal.profit, 0);
+  assert.ok(ana.room().feed.some((entry) => entry.kind === 'duel'));
+  assert.equal(winner.last('badge').badge.id, 'duelist');
+  assert.equal(loser.last('badge'), undefined);
+  winner.send({ t: 'profileOf', id: loser.you.id });
+  assert.deepEqual(winner.last('profileOf').player.history.map((entry) => [entry.g, entry.w, entry.r]), [['Duelo', 300, 0]]);
+
+  beto.send({ t: 'duelAnswer', id: 1, accept: true });
+  assert.equal(beto.error().code, 'duel_gone', 'a duel is settled once');
+  club.clock.advance(economy.DUEL.cooldownMs);
+});
+
+test('duel: declined, expired, and the ones that cannot be', () => {
+  const [club, ana, beto] = roomWith(['Ana', 'Beto']);
+  for (const [to, amount, code] of [
+    [ana.you.id, 100, 'bad_target'],
+    ['nobody', 100, 'bad_target'],
+    [beto.you.id, 5, 'bad_amount'],
+    [beto.you.id, 10.5, 'bad_amount'],
+    [beto.you.id, 5000, 'insufficient'],
+  ]) {
+    ana.send({ t: 'duel', to, amount });
+    assert.equal(ana.error().code, code, `${to} ${amount}`);
+  }
+  ana.send({ t: 'duel', to: beto.you.id, amount: 100 });
+  beto.send({ t: 'duelAnswer', id: 1, accept: false });
+  assert.deepEqual(ana.last('duelOff'), { t: 'duelOff', id: 1, reason: 'declined', name: 'Beto' });
+  assert.equal(ana.me().balance, 1000);
+
+  club.clock.advance(economy.DUEL.cooldownMs);
+  ana.send({ t: 'duel', to: beto.you.id, amount: 100 });
+  ana.clear();
+  beto.clear();
+  club.clock.advance(economy.DUEL.ttlMs);
+  assert.equal(ana.last('duelOff').reason, 'expired');
+  assert.equal(beto.last('duelOff').reason, 'expired', 'both sides hear about an expiry');
+  beto.send({ t: 'duelAnswer', id: 2, accept: true });
+  assert.equal(beto.error().code, 'duel_gone');
+});
+
+// ───────────────────────────── daily bonus ─────────────────────────────
+
+test('daily bonus: once every 20 hours, grows with the streak, resets after two days away', () => {
+  const HOUR = 3600 * 1000;
+  const [club, ana] = roomWith(['Ana']);
+  assert.deepEqual(ana.room().daily, { availableAt: 0, streak: 1, bonus: 500 });
+  ana.send({ t: 'daily' });
+  assert.deepEqual(ana.last('daily'), { t: 'daily', bonus: 500, streak: 1 });
+  assert.equal(ana.me().balance, 1500);
+  assert.equal(ana.room().goal.profit, 0, 'a bonus is not profit');
+  assert.equal(ana.room().daily.availableAt, club.clock.now() + 20 * HOUR);
+
+  ana.send({ t: 'daily' });
+  assert.equal(ana.error().code, 'daily_wait');
+  club.clock.advance(19 * HOUR);
+  ana.send({ t: 'daily' });
+  assert.equal(ana.error().code, 'daily_wait');
+
+  // Rooms do not live for hours: the streak travels in the save.
+  const next = (save, hours) => {
+    const later = createTestHub();
+    later.clock.advance(club.clock.now() - later.clock.now() + hours * HOUR);
+    const back = later.client({ save });
+    back.send({ t: 'createRoom' });
+    return [later, back];
+  };
+  club.clock.advance(2000);
+  const [, day2] = next(ana.last('save').save, 24);
+  assert.equal(day2.room().daily.bonus, 700);
+  day2.send({ t: 'daily' });
+  assert.deepEqual(day2.last('daily'), { t: 'daily', bonus: 700, streak: 2 });
+
+  const [, gone] = next(ana.last('save').save, 72);
+  gone.send({ t: 'daily' });
+  assert.deepEqual(gone.last('daily'), { t: 'daily', bonus: 500, streak: 1 }, 'two days away: the streak starts over');
+});
+
+// ───────────────────────────── achievements ─────────────────────────────
+
+test('achievements: unlocked once, announced to the room, told to the player, and saved', () => {
+  const [club, ana, beto] = roomWith(['Ana', 'Beto']);
+  seat(ana);
+  act(ana, { type: 'stake', amount: 100 });
+  act(ana, { type: 'settle', multiplier: 10 });
+  assert.deepEqual(ana.all('badge').map((message) => message.badge.id), ['x10']);
+  assert.equal(beto.all('badge').length, 0, 'the notice is private');
+  assert.ok(beto.room().feed.some((entry) => entry.kind === 'badge' && entry.text.includes('Golpe de suerte')));
+  assert.equal(beto.room().players[0].badges, 1);
+
+  act(ana, { type: 'stake', amount: 100 });
+  act(ana, { type: 'settle', multiplier: 10 });
+  assert.equal(ana.all('badge').length, 1, 'never twice');
+
+  act(ana, { type: 'win', amount: 8000 }); // 10.000 chips and counting
+  const ids = ana.all('badge').map((message) => message.badge.id);
+  assert.ok(ids.includes('peak10k') && ids.includes('mvp'));
+  ana.send({ t: 'buy', item: 'hat:party' });
+  assert.equal(ana.last('badge').badge.id, 'dressed');
+
+  beto.send({ t: 'profileOf', id: ana.you.id });
+  assert.deepEqual(beto.last('profileOf').player.badges.slice().sort(), ['dressed', 'mvp', 'peak10k', 'x10']);
+
+  club.clock.advance(2000);
+  const back = createTestHub().client({ save: ana.last('save').save });
+  back.send({ t: 'createRoom' });
+  assert.equal(back.me().badges, 4, 'achievements travel with the save');
+  assert.equal(ana.last('welcome').catalog.badges.length, economy.BADGES.length);
+});
+
 // ───────────────────────────── history ─────────────────────────────
 
 test('history: every resolved bet lands in the personal history, newest first', () => {

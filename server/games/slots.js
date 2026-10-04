@@ -84,7 +84,7 @@ function createWith(meta, ctx) {
     ctx.after(SPIN_MS, () => {
       pending.delete(playerId);
       if (win > 0) ctx.credit(playerId, win);
-      ctx.report(playerId, { wagered: bet, won: win });
+      ctx.report(playerId, { wagered: bet, won: win, tag: hitJackpot ? 'jackpot' : undefined });
       const player = ctx.player(playerId);
       const entry = {
         id: playerId,

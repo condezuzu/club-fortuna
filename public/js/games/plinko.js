@@ -61,6 +61,12 @@ const ART = `
 export default {
   id: 'plinko',
   icon: 'star',
+  help: [
+    "Elegí la apuesta, la cantidad de filas y el riesgo, y soltá la bolita (también con la barra espaciadora). En cada clavo rebota a la izquierda o a la derecha con la misma chance.",
+    "El casillero donde cae paga su multiplicador sobre tu apuesta: x2 duplica, x0,5 te devuelve la mitad.",
+    "Con más riesgo, el centro paga menos y los bordes muchísimo más: hasta x1.000 con 16 filas y riesgo alto.",
+    "Podés tener hasta 10 bolitas en el aire, o dejarlo en \"Auto\". Todos ven caer las bolitas de todos.",
+  ],
   art(ui) {
     const node = ui.el('div', { class: 'art-plinko' });
     node.innerHTML = ART; // static markup authored above

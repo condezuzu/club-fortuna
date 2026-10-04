@@ -12,6 +12,12 @@ const ARC = `
 export default {
   id: 'blackjack',
   icon: 'spade',
+  help: [
+    "Llegá lo más cerca posible de 21 sin pasarte, y más cerca que el crupier. Las figuras valen 10 y el as vale 1 u 11, lo que más convenga.",
+    "Pedir: recibís otra carta. Plantarse: te quedás con lo que tenés. Doblar: duplicás la apuesta y recibís una sola carta más.",
+    "El crupier pide carta hasta llegar a 17. Si se pasa, cobran todos los que sigan en juego.",
+    "Ganar paga 1 a 1. Un blackjack (as + una carta de 10 con las dos primeras) paga 3 a 2. En un empate recuperás tu apuesta.",
+  ],
   art(ui) {
     return ui.el(
       'div',
@@ -46,7 +52,7 @@ export default {
       },
     });
     const clearBtn = createButton('Limpiar', { variant: 'ghost', icon: 'trash', onClick: () => api.send({ type: 'clear' }) });
-    const dealBtn = createButton('Repartir', { variant: 'primary', onClick: () => api.send({ type: 'deal' }) });
+    const dealBtn = createButton('Repartir', { variant: 'primary', onClick: () => api.send({ type: 'ready', ready: !(state && state.you.ready) }) });
     const betting = el('div', { class: 'bj__controls' }, tray, betBtn, clearBtn, dealBtn);
 
     const hitBtn = createButton('Pedir', { variant: 'primary', size: 'lg', onClick: () => api.send({ type: 'hit' }) });
@@ -71,6 +77,16 @@ export default {
       )
     );
 
+
+    /** Alone at the table "Repartir" deals; with company everybody confirms first. */
+    function paintConfirm(s, myBet) {
+      const company = api.players().filter((p) => p.table === api.meta.id && p.connected).length > 1;
+      dealBtn.disabled = s.phase !== 'betting' || s.bets.length === 0;
+      dealBtn.setLabel(s.you.ready ? 'Esperando al resto…' : myBet > 0 ? (company ? 'Listo' : 'Repartir') : 'Paso esta mano');
+      dealBtn.classList.toggle('is-on', Boolean(s.you.ready));
+    }
+    const waitingText = (s) => (s.ready.length && s.waiting.length ? ` · falta que confirme ${s.waiting.join(', ')}` : '');
+
     function renderCards(container, key, cards) {
       clear(container);
       const before = seen[key] || 0;
@@ -90,7 +106,7 @@ export default {
       let text = '';
       const left = state.deadline ? Math.max(0, Math.ceil((state.deadline - api.serverNow()) / 1000)) : null;
       if (state.phase === 'betting') {
-        text = state.bets.length ? `Hagan sus apuestas · se reparte en ${left} s` : 'Hagan sus apuestas';
+        text = state.bets.length ? `Hagan sus apuestas · se reparte en ${left} s${waitingText(state)}` : 'Hagan sus apuestas';
       } else if (state.phase === 'playing') {
         const hand = state.hands.find((h) => h.id === state.turn);
         text = state.you.myTurn ? `Tu turno · ${left} s` : `Turno de ${hand ? hand.name : '…'} · ${left} s`;
@@ -157,7 +173,7 @@ export default {
       betting.hidden = s.phase !== 'betting';
       playing.hidden = !s.you.myTurn;
       clearBtn.disabled = s.you.bet === 0;
-      dealBtn.disabled = s.you.bet === 0;
+      paintConfirm(s, s.you.bet);
       doubleBtn.disabled = !s.you.canDouble;
       betBtn.setLabel(s.you.bet ? `Apostar más (llevás ${formatChips(s.you.bet)})` : 'Apostar');
       tray.refresh();

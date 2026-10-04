@@ -22,6 +22,7 @@
   fill: none;
 }
 
+/* Linework: one outline weight, a thinner one for small details. */
 .av-svg .av-o {
   stroke: var(--av-line, #3b2a49);
   stroke-width: 1.6;
@@ -44,6 +45,7 @@
   fill: none;
 }
 
+/* Skin */
 .av-svg .av-sk {
   fill: var(--av-skin, #f1bf9b);
 }
@@ -52,6 +54,7 @@
   fill: var(--av-skin-d, #cf9a80);
 }
 
+/* The player colour: the shirt, or the accent of an outfit. */
 .av-svg .av-sh {
   fill: var(--av-shirt, #d43a4c);
 }
@@ -60,6 +63,24 @@
   fill: var(--av-shirt-d, #9b2c3f);
 }
 
+.av-svg .av-shx {
+  fill: var(--av-shirt-x, #7a2333);
+}
+
+/* Jackets (suit, tuxedo) */
+.av-svg .av-coat {
+  fill: var(--av-coat, #3b4466);
+}
+
+.av-svg .av-coat-d {
+  fill: var(--av-coat-d, #2c3350);
+}
+
+.av-svg .av-coat-l {
+  fill: var(--av-coat-l, #5a6384);
+}
+
+/* Pants, belt, shoes */
 .av-svg .av-pa {
   fill: var(--av-pants, #3f62a8);
 }
@@ -68,6 +89,153 @@
   fill: var(--av-pants-d, #2f487b);
 }
 
+.av-svg .av-belt {
+  fill: #4b3127;
+}
+
+.av-svg .av-gold {
+  fill: #e6c878;
+}
+
+.av-svg .av-shoe {
+  fill: var(--av-shoe, #7a4f38);
+}
+
+.av-svg .av-shoe-d {
+  fill: var(--av-shoe-d, #5c3a29);
+}
+
+.av-svg .av-sole {
+  fill: var(--av-sole, #eadfc8);
+  stroke-width: 1.2;
+}
+
+.av-svg .av-shoe-l {
+  stroke: var(--av-shoe-l, #bd9170);
+  stroke-width: 1.1;
+  stroke-linecap: round;
+}
+
+/* Cloth details */
+.av-svg .av-collar {
+  fill: #fbf5e6;
+}
+
+.av-svg .av-collar-d {
+  fill: #d9d0bd;
+}
+
+.av-svg .av-band {
+  fill: #fbf5e6;
+}
+
+.av-svg .av-btn {
+  fill: var(--av-shirt-d, #9b2c3f);
+}
+
+.av-svg .av-seam {
+  stroke: var(--av-shirt-d, #9b2c3f);
+  stroke-width: 1;
+  stroke-linecap: round;
+}
+
+.av-svg .av-seam-p {
+  stroke: var(--av-pants-d, #2f487b);
+  stroke-width: 1;
+  stroke-linecap: round;
+}
+
+.av-svg .av-seam-c {
+  stroke: var(--av-coat-d, #2c3350);
+  stroke-width: 1;
+  stroke-linecap: round;
+}
+
+.av-svg .av-rib {
+  stroke: #1a0f22;
+  stroke-width: 0.8;
+  stroke-linecap: round;
+  opacity: 0.32;
+}
+
+.av-svg .av-stripe {
+  stroke: #fbf5e6;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+}
+
+.av-svg .av-stripe--dim {
+  stroke: #d9d0bd;
+}
+
+.av-svg .av-string {
+  stroke: #fbf5e6;
+  stroke-width: 1.1;
+  stroke-linecap: round;
+}
+
+.av-svg .av-zip {
+  stroke: var(--av-shirt-x, #7a2333);
+  stroke-width: 1.2;
+  stroke-linecap: round;
+}
+
+.av-svg .av-satin {
+  stroke: var(--av-coat-l, #5a6384);
+  stroke-width: 1.4;
+  stroke-linecap: round;
+}
+
+.av-svg .av-tick {
+  stroke: #2b2230;
+  stroke-width: 1.1;
+  stroke-linecap: round;
+}
+
+.av-svg .av-bow {
+  fill: var(--av-bow, #2b2230);
+}
+
+/* Soft shading and highlights */
+.av-svg .av-shade {
+  fill: #1a0f22;
+  fill-opacity: 0.2;
+}
+
+.av-svg .av-shade--soft {
+  fill-opacity: 0.1;
+}
+
+.av-svg .av-lite {
+  fill: #fff;
+  fill-opacity: 0.12;
+}
+
+.av-svg .av-shadow {
+  fill: #000;
+  fill-opacity: 0.36;
+}
+
+/* The shadow the hair casts on the forehead: the hair drawn again, a little
+   lower, flat and dark (the group is clipped to the skull). */
+.av-svg .av-cast {
+  opacity: 0.17;
+}
+
+.av-svg .av-cast * {
+  fill: #1a0f22 !important;
+  fill-opacity: 1 !important;
+  stroke: none !important;
+}
+
+.av-svg .av-cast .av-hal,
+.av-svg .av-cast .av-had-l,
+.av-svg .av-cast .av-shine,
+.av-svg .av-cast .av-ha-tint {
+  display: none;
+}
+
+/* Hair */
 .av-svg .av-ha {
   fill: var(--av-hair, #2d2534);
 }
@@ -98,30 +266,17 @@
   opacity: 0.42;
 }
 
-.av-svg .av-shoe {
-  fill: #6f4a35;
+.av-svg .av-fh {
+  fill: var(--av-beard, #2d2534);
 }
 
-.av-svg .av-shoe-d {
-  fill: #523626;
+.av-svg .av-freckle {
+  fill: var(--av-freckle, #b56a45);
 }
 
-.av-svg .av-shoe-l {
-  stroke: #b08262;
-  stroke-width: 1.1;
-  stroke-linecap: round;
-}
-
-.av-svg .av-shade {
-  fill: #1a0f22;
-  fill-opacity: 0.2;
-}
-
-.av-svg .av-collar {
-  fill: #fbf5e6;
-}
-
-.av-svg .av-ear-in {
+/* Face */
+.av-svg .av-ear-in,
+.av-svg .av-nose {
   stroke: var(--av-skin-d, #cf9a80);
   stroke-width: 1;
   stroke-linecap: round;
@@ -130,26 +285,46 @@
 .av-svg .av-blush {
   fill: var(--av-blush, #f08b8b);
   fill-opacity: 0.55;
+  transition: fill-opacity 200ms ease;
 }
 
 .av-svg .av-eye {
   fill: #2a1f2e;
 }
 
+.av-svg .av-iris {
+  fill: var(--av-iris, #70452f);
+}
+
+.av-svg .av-pupil {
+  fill: #1d1524;
+}
+
 .av-svg .av-glint {
   fill: #fff;
 }
 
+.av-svg .av-glint--dim {
+  fill-opacity: 0.7;
+}
+
 .av-svg .av-brow {
   stroke: var(--av-brow, #2a1f2e);
-  stroke-width: 1.35;
+  stroke-width: 1.45;
   stroke-linecap: round;
 }
 
 .av-svg .av-mouth {
   stroke: var(--av-mouth, #6e2a2e);
-  stroke-width: 1.35;
+  stroke-width: 1.4;
   stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* On a beard the mouth is drawn as a pair of lips, so it stays readable. */
+.av-svg .av-bearded .av-mouth {
+  stroke: var(--av-lip, #d98a80);
+  stroke-width: 1.7;
 }
 
 .av-svg .av-mouth-open {
@@ -159,11 +334,19 @@
   stroke-linejoin: round;
 }
 
+.av-svg .av-tongue {
+  fill: #f08a9b;
+}
+
 .av-svg .av-eyeline {
   stroke: #2a1f2e;
-  stroke-width: 1.6;
+  stroke-width: 1.7;
   stroke-linecap: round;
   stroke-linejoin: round;
+}
+
+.av-svg .av-eyeline--thin {
+  stroke-width: 1.2;
 }
 
 .av-svg .av-tear {
@@ -172,13 +355,17 @@
   stroke-width: 0.5;
 }
 
-.av-svg .av-bow {
-  fill: var(--av-bow, #2b2230);
+.av-svg .av-heart {
+  fill: #e8526a;
+  stroke: #8f1f31;
+  stroke-width: 0.9;
+  stroke-linejoin: round;
 }
 
-.av-svg .av-shadow {
-  fill: #000;
-  fill-opacity: 0.36;
+.av-svg .av-star {
+  fill: #ffe27a;
+  stroke: #b8923f;
+  stroke-width: 0.5;
 }
 
 .av-svg .av-ring {
@@ -190,8 +377,10 @@
 
 /* Faces: one set of features per mood. */
 .av-svg .av-f--happy,
+.av-svg .av-f--love,
 .av-svg .av-f--hit,
-.av-svg .av-f--sad {
+.av-svg .av-f--sad,
+.av-svg .av-fx {
   display: none;
 }
 
@@ -203,8 +392,9 @@
 }
 
 .mood-cheer .av-f--happy,
-.mood-love .av-f--happy,
+.mood-love .av-f--love,
 .mood-hit .av-f--hit,
+.mood-hit .av-fx--hit,
 .mood-sad .av-f--sad {
   display: inline;
 }
@@ -215,6 +405,7 @@
 
 .avatar-char {
   --av-size: 72px;
+  --av-step: calc(0.56s / var(--av-pace, 1));
   position: relative;
   display: inline-block;
   flex: none;
@@ -240,9 +431,16 @@
   transform: scaleX(-1);
 }
 
+/* Placed for the first time: face the right way at once, without the turn. */
+.avatar-char.is-snap .av-flip,
+.parade--snap .parade__tagrow {
+  transition: none;
+}
+
 /* Joints (user units of the 64 x 100 viewBox). */
-.av-svg .av-arm {
-  transition: transform 180ms var(--ease-out);
+.av-svg .av-arm,
+.av-svg .av-held {
+  transition: transform 200ms var(--ease-out);
 }
 
 .av-svg .av-arm--near {
@@ -250,8 +448,9 @@
   transform: rotate(5deg);
 }
 
-.av-svg .av-arm--far {
-  transform-origin: 39.9px 55px;
+.av-svg .av-arm--far,
+.av-svg .av-held {
+  transform-origin: 41.5px 55px;
   transform: rotate(-4deg);
 }
 
@@ -263,22 +462,92 @@
   transform-origin: 35.6px 72px;
 }
 
+.av-svg .av-foot--near {
+  transform-origin: 28.5px 92px;
+}
+
+.av-svg .av-foot--far {
+  transform-origin: 35.6px 92px;
+}
+
 .av-svg .av-head {
   transform-origin: 32px 50px;
   transition: transform 220ms var(--ease-out);
 }
 
-/* Idle: breathing and blinking (each character gets its own phase). */
+/* Something in the leading hand: the arm takes the pose that carries it. */
+.av-svg .av-hold--drink {
+  --av-hold: -52deg;
+  --av-swing: 4deg;
+}
+
+.av-svg .av-hold--cards {
+  --av-hold: -48deg;
+  --av-swing: 5deg;
+}
+
+.av-svg .av-hold--cane {
+  --av-hold: -16deg;
+  --av-swing: 11deg;
+}
+
+.av-svg .av-hold--moneybag {
+  --av-hold: -22deg;
+  --av-swing: 9deg;
+}
+
+.av-svg .av-hold .av-arm--far,
+.av-svg .av-hold .av-held {
+  transform: rotate(var(--av-hold));
+}
+
+.av-svg .av-bag {
+  transform-origin: 39.9px 73px;
+}
+
+/* Things that hang and swing: long hair, ponytail, braids, cape. */
+.av-svg .av-sway {
+  transform-box: fill-box;
+  transform-origin: 50% 0%;
+}
+
+.av-svg .av-sway--tail {
+  transform-origin: 92% 4%;
+}
+
+/* ---- Idle: breathing, blinking, a glance, a raised eyebrow ---------------- */
+/* Each character gets its own phase (--av-seed), so a crowd never moves in sync. */
+
 .av-svg .av-upper {
   transform-origin: 32px 75px;
   animation: av-breathe 3.6s ease-in-out infinite;
   animation-delay: calc(var(--av-seed, 0) * -3.6s);
 }
 
+.av-svg .av-head {
+  animation: av-nod 6.2s ease-in-out infinite;
+  animation-delay: calc(var(--av-seed, 0) * -6.2s);
+}
+
 .av-svg .av-eyes {
   transform-origin: 35px 37.8px;
-  animation: av-blink 4.8s infinite;
-  animation-delay: calc(var(--av-seed, 0) * -4.8s);
+  animation: av-blink 5.2s infinite;
+  animation-delay: calc(var(--av-seed, 0) * -5.2s);
+}
+
+.av-svg .av-look {
+  animation: av-glance 7.4s ease-in-out infinite;
+  animation-delay: calc(var(--av-seed, 0) * -7.4s);
+}
+
+.av-svg .av-brows {
+  animation: av-brows 9.5s ease-in-out infinite;
+  animation-delay: calc(var(--av-seed, 0) * -9.5s);
+}
+
+.av-svg .av-sway {
+  animation: av-sway-idle 3.6s ease-in-out infinite;
+  animation-delay: calc(var(--av-seed, 0) * -3.6s);
 }
 
 @keyframes av-breathe {
@@ -292,42 +561,143 @@
   }
 }
 
+@keyframes av-nod {
+  0%,
+  100% {
+    transform: rotate(-0.8deg);
+  }
+
+  50% {
+    transform: rotate(0.9deg);
+  }
+}
+
 @keyframes av-blink {
   0%,
-  92%,
+  44%,
+  47.6%,
+  90.6%,
+  93.8%,
+  97%,
   100% {
     transform: scaleY(1);
   }
 
-  95.5% {
+  45.8%,
+  92.2%,
+  95.4% {
     transform: scaleY(0.08);
   }
 }
 
-/* Walk cycle: legs and arms swing in opposite phase, the body dips when the
-   legs are apart, the torso leans into the walk. */
+@keyframes av-glance {
+  0%,
+  56%,
+  94%,
+  100% {
+    transform: translateX(0);
+  }
+
+  60%,
+  72% {
+    transform: translateX(0.7px);
+  }
+
+  78%,
+  90% {
+    transform: translateX(-0.6px);
+  }
+}
+
+@keyframes av-brows {
+  0%,
+  80%,
+  96%,
+  100% {
+    transform: translateY(0);
+  }
+
+  84%,
+  92% {
+    transform: translateY(-0.8px);
+  }
+}
+
+@keyframes av-sway-idle {
+  0%,
+  100% {
+    transform: rotate(-0.5deg);
+  }
+
+  50% {
+    transform: rotate(0.7deg);
+  }
+}
+
+/* ---- Walk cycle ------------------------------------------------------------ */
+/* Legs and arms swing in opposite phase; the leg that comes forward lifts off
+   the floor and the feet roll from heel to toe; the body dips when the legs
+   are apart, the torso leans into the walk and whatever hangs trails behind.
+   --av-step is one full cycle (two steps). */
+
 .avatar-char.is-walking .av-body {
-  animation: av-bob 0.56s ease-in-out infinite;
+  animation: av-bob var(--av-step) ease-in-out infinite;
 }
 
 .avatar-char.is-walking .av-upper {
-  animation: av-lean 0.56s ease-in-out infinite;
+  animation: av-lean var(--av-step) ease-in-out infinite;
+}
+
+.avatar-char.is-walking .av-head {
+  animation: av-head-walk var(--av-step) ease-in-out infinite;
 }
 
 .avatar-char.is-walking .av-leg--near {
-  animation: av-leg-a 0.56s ease-in-out infinite;
+  animation: av-leg-a var(--av-step) ease-in-out infinite;
 }
 
 .avatar-char.is-walking .av-leg--far {
-  animation: av-leg-b 0.56s ease-in-out infinite;
+  animation: av-leg-b var(--av-step) ease-in-out infinite;
+}
+
+.avatar-char.is-walking .av-leg--near .av-lift {
+  animation: av-lift-a var(--av-step) ease-in-out infinite;
+}
+
+.avatar-char.is-walking .av-leg--far .av-lift {
+  animation: av-lift-b var(--av-step) ease-in-out infinite;
+}
+
+.avatar-char.is-walking .av-foot--near {
+  animation: av-foot-a var(--av-step) ease-in-out infinite;
+}
+
+.avatar-char.is-walking .av-foot--far {
+  animation: av-foot-b var(--av-step) ease-in-out infinite;
 }
 
 .avatar-char.is-walking .av-arm--near {
-  animation: av-arm-b 0.56s ease-in-out infinite;
+  animation: av-arm-b var(--av-step) ease-in-out infinite;
+  animation-delay: calc(var(--av-step) * -0.06);
 }
 
 .avatar-char.is-walking .av-arm--far {
-  animation: av-arm-a 0.56s ease-in-out infinite;
+  animation: av-arm-a var(--av-step) ease-in-out infinite;
+  animation-delay: calc(var(--av-step) * -0.06);
+}
+
+.avatar-char.is-walking .av-hold .av-arm--far,
+.avatar-char.is-walking .av-hold .av-held {
+  animation: av-carry var(--av-step) ease-in-out infinite;
+  animation-delay: 0s;
+}
+
+.avatar-char.is-walking .av-bag {
+  animation: av-bag calc(var(--av-step) / 2) ease-in-out infinite alternate;
+}
+
+.avatar-char.is-walking .av-sway {
+  animation: av-sway-walk calc(var(--av-step) / 2) ease-in-out infinite alternate;
 }
 
 @keyframes av-bob {
@@ -347,12 +717,25 @@
   0%,
   50%,
   100% {
-    transform: rotate(3deg);
+    transform: rotate(3.2deg);
   }
 
   25%,
   75% {
     transform: rotate(1.6deg);
+  }
+}
+
+@keyframes av-head-walk {
+  0%,
+  50%,
+  100% {
+    transform: translateY(0.5px) rotate(-1.2deg);
+  }
+
+  25%,
+  75% {
+    transform: translateY(-0.3px) rotate(0.8deg);
   }
 }
 
@@ -363,14 +746,14 @@
   }
 
   50% {
-    transform: rotate(-23deg);
+    transform: rotate(-24deg);
   }
 }
 
 @keyframes av-leg-b {
   0%,
   100% {
-    transform: rotate(-23deg);
+    transform: rotate(-24deg);
   }
 
   50% {
@@ -378,60 +761,281 @@
   }
 }
 
-@keyframes av-arm-a {
+@keyframes av-lift-a {
+  0%,
+  50%,
+  100% {
+    transform: translateY(0);
+  }
+
+  25% {
+    transform: translateY(-2.4px);
+  }
+}
+
+@keyframes av-lift-b {
+  0%,
+  50%,
+  100% {
+    transform: translateY(0);
+  }
+
+  75% {
+    transform: translateY(-2.4px);
+  }
+}
+
+@keyframes av-foot-a {
   0%,
   100% {
-    transform: rotate(30deg);
+    transform: rotate(-9deg);
   }
 
   50% {
-    transform: rotate(-30deg);
+    transform: rotate(11deg);
+  }
+}
+
+@keyframes av-foot-b {
+  0%,
+  100% {
+    transform: rotate(11deg);
+  }
+
+  50% {
+    transform: rotate(-9deg);
+  }
+}
+
+@keyframes av-arm-a {
+  0%,
+  100% {
+    transform: rotate(28deg);
+  }
+
+  50% {
+    transform: rotate(-28deg);
   }
 }
 
 @keyframes av-arm-b {
   0%,
   100% {
-    transform: rotate(-30deg);
+    transform: rotate(-28deg);
   }
 
   50% {
-    transform: rotate(30deg);
+    transform: rotate(28deg);
   }
 }
 
-/* Moods (set by the parade; also available through element.setMood). */
+@keyframes av-carry {
+  0%,
+  100% {
+    transform: rotate(calc(var(--av-hold) + var(--av-swing)));
+  }
+
+  50% {
+    transform: rotate(calc(var(--av-hold) - var(--av-swing)));
+  }
+}
+
+@keyframes av-bag {
+  from {
+    transform: rotate(9deg);
+  }
+
+  to {
+    transform: rotate(-7deg);
+  }
+}
+
+@keyframes av-sway-walk {
+  from {
+    transform: rotate(4.6deg);
+  }
+
+  to {
+    transform: rotate(0.8deg);
+  }
+}
+
+/* ---- Moods (set by the parade; also available through element.setMood) --- */
+
+.avatar-char.mood-cheer .av-head,
+.avatar-char.mood-love .av-head,
+.avatar-char.mood-hit .av-head,
+.avatar-char.mood-sad .av-head {
+  animation: none;
+}
+
+.avatar-char.mood-cheer .av-blush,
+.avatar-char.mood-love .av-blush {
+  fill-opacity: 0.9;
+}
+
+/* cheer: both arms up, waving */
 .avatar-char.mood-cheer .av-arm--near {
-  transform: rotate(152deg);
+  transform: rotate(128deg);
+  animation: av-wave-a 0.32s ease-in-out infinite alternate;
 }
 
 .avatar-char.mood-cheer .av-arm--far {
-  transform: rotate(-152deg);
+  transform: rotate(-128deg);
+  animation: av-wave-b 0.32s ease-in-out infinite alternate;
 }
 
+.avatar-char.mood-cheer .av-hold .av-arm--far,
+.avatar-char.mood-cheer .av-hold .av-held {
+  transform: rotate(calc(var(--av-hold) - 26deg));
+  animation: none;
+}
+
+.avatar-char.mood-cheer .av-head {
+  transform: rotate(-3deg);
+}
+
+/* love: heart eyes, a hand on the heart */
 .avatar-char.mood-love .av-arm--near {
-  transform: rotate(34deg);
+  transform: rotate(-58deg);
+  animation: none;
 }
 
 .avatar-char.mood-love .av-arm--far {
-  transform: rotate(-34deg);
+  transform: rotate(8deg);
+  animation: none;
 }
 
+.avatar-char.mood-love .av-hold .av-arm--far,
+.avatar-char.mood-love .av-hold .av-held {
+  transform: rotate(var(--av-hold));
+}
+
+.avatar-char.mood-love .av-head {
+  transform: rotate(4deg);
+}
+
+.av-svg .av-hearts {
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+.avatar-char.mood-love .av-hearts {
+  animation: av-throb 0.42s ease-in-out infinite alternate;
+}
+
+/* hit: arms out, head thrown back, stars circling */
 .avatar-char.mood-hit .av-arm--near {
   transform: rotate(62deg);
+  animation: none;
 }
 
 .avatar-char.mood-hit .av-arm--far {
   transform: rotate(-58deg);
+  animation: none;
 }
 
+.avatar-char.mood-hit .av-hold .av-arm--far,
+.avatar-char.mood-hit .av-hold .av-held {
+  transform: rotate(calc(var(--av-hold) + 14deg));
+}
+
+.avatar-char.mood-hit .av-head {
+  transform: rotate(-6deg);
+}
+
+.av-svg .av-dizzy {
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+.avatar-char.mood-hit .av-dizzy {
+  animation: av-spin 0.9s linear infinite;
+}
+
+/* sad: head down, shoulders dropped, tears */
 .avatar-char.mood-sad .av-head {
   transform: translateY(1.8px) rotate(5deg);
 }
 
 .avatar-char.mood-sad .av-upper {
   animation: none;
-  transform: scale(1, 0.975);
+  transform: scale(1, 0.972);
+}
+
+.avatar-char.mood-sad .av-arm--near {
+  transform: rotate(1deg);
+  animation: none;
+}
+
+.avatar-char.mood-sad .av-arm--far {
+  transform: rotate(0deg);
+  animation: none;
+}
+
+.avatar-char.mood-sad .av-hold .av-arm--far,
+.avatar-char.mood-sad .av-hold .av-held {
+  transform: rotate(calc(var(--av-hold) + 18deg));
+}
+
+.avatar-char.mood-sad .av-tear {
+  animation: av-tear 1.1s ease-in infinite;
+}
+
+.avatar-char.mood-sad .av-tear--b {
+  animation-delay: -0.55s;
+}
+
+@keyframes av-wave-a {
+  from {
+    transform: rotate(120deg);
+  }
+
+  to {
+    transform: rotate(138deg);
+  }
+}
+
+@keyframes av-wave-b {
+  from {
+    transform: rotate(-138deg);
+  }
+
+  to {
+    transform: rotate(-120deg);
+  }
+}
+
+@keyframes av-throb {
+  from {
+    transform: scale(0.92);
+  }
+
+  to {
+    transform: scale(1.14);
+  }
+}
+
+@keyframes av-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes av-tear {
+  0% {
+    opacity: 0;
+    transform: translateY(-1.5px);
+  }
+
+  20% {
+    opacity: 1;
+  }
+
+  100% {
+    opacity: 0;
+    transform: translateY(4.5px);
+  }
 }
 
 /* ---- Pets ---------------------------------------------------------------- */
@@ -498,6 +1102,34 @@
 
 .avatar-char.is-walking .av-parrot-wing {
   animation: av-flap 0.15s ease-in-out infinite alternate;
+}
+
+/* The little dragon hovers behind the shoulder and puffs now and then. */
+.avatar-char.is-walking .av-pet--dragon {
+  transform: translate(-4px, -2px);
+}
+
+.av-svg .av-dragon-fly {
+  animation: av-hover 0.9s ease-in-out infinite alternate;
+}
+
+.av-svg .av-dragon-wing {
+  transform-box: fill-box;
+  transform-origin: 96% 96%;
+  animation: av-dragon-flap 0.22s ease-in-out infinite alternate;
+}
+
+.av-svg .av-dragon-tail {
+  transform-box: fill-box;
+  transform-origin: 95% 90%;
+  animation: av-sway 1.3s ease-in-out infinite alternate;
+}
+
+.av-svg .av-dragon-fire {
+  transform-box: fill-box;
+  transform-origin: 0% 50%;
+  animation: av-puff 4.6s ease-out infinite;
+  animation-delay: calc(var(--av-seed, 0) * -4.6s);
 }
 
 @keyframes av-wag {
@@ -589,6 +1221,35 @@
   }
 }
 
+@keyframes av-dragon-flap {
+  from {
+    transform: rotate(-12deg) scaleY(1);
+  }
+
+  to {
+    transform: rotate(24deg) scaleY(0.7);
+  }
+}
+
+@keyframes av-puff {
+  0%,
+  80%,
+  100% {
+    opacity: 0;
+    transform: scale(0.2);
+  }
+
+  85% {
+    opacity: 1;
+    transform: scale(1.1);
+  }
+
+  94% {
+    opacity: 1;
+    transform: scale(0.9);
+  }
+}
+
 /* ---- Auras --------------------------------------------------------------- */
 
 .av-svg .av-spark {
@@ -631,6 +1292,18 @@
 .av-svg .av-mote {
   animation: av-mote 2.8s linear infinite;
 }
+
+/* Phases: the particles of an aura start at different points of their loop. */
+.av-svg .av-p1 { animation-delay: -0.2s; }
+.av-svg .av-p2 { animation-delay: -0.4s; }
+.av-svg .av-p3 { animation-delay: -0.6s; }
+.av-svg .av-p4 { animation-delay: -0.8s; }
+.av-svg .av-p5 { animation-delay: -1s; }
+.av-svg .av-p6 { animation-delay: -1.2s; }
+.av-svg .av-p7 { animation-delay: -1.4s; }
+.av-svg .av-p8 { animation-delay: -1.6s; }
+.av-svg .av-p9 { animation-delay: -1.8s; }
+.av-svg .av-p10 { animation-delay: -2s; }
 
 @keyframes av-twinkle {
   0%,
@@ -873,22 +1546,34 @@
 }
 
 .parade__walker.is-offline .parade__body {
-  opacity: 0.5;
-  filter: grayscale(0.9) brightness(0.65);
+  opacity: 0.62;
 }
 
 .parade__walker.is-offline .parade__tag {
   opacity: 0.55;
 }
 
-/* Name tag: level chip in the player's colour, crown, name, "debe". */
-.parade__tag {
+/* Name tag: level chip in the player's colour, crown, name, "debe".
+   The row wrapper moves it between label rows; avatars.js slides the tag
+   sideways (inline transform) so neighbours never cover each other. */
+.parade__tagrow {
   position: absolute;
   top: calc(var(--pw-char) + 2px);
   left: 50%;
+  width: 0;
+  height: 0;
+  transform: translateY(calc(var(--pw-rowi, 0) * var(--pw-row)));
+  transition: transform 180ms var(--ease-out);
+}
+
+.parade__tag {
+  position: absolute;
+  top: 0;
+  left: 0;
   display: inline-flex;
   align-items: center;
   gap: 3px;
+  width: max-content;
   height: calc(var(--pw-row) - 2px);
   padding: 0 6px 0 2px;
   border: 1px solid rgba(244, 237, 220, 0.16);
@@ -900,8 +1585,8 @@
   font-weight: 600;
   line-height: 1;
   white-space: nowrap;
-  transform: translate(calc(-50% + var(--pw-shift, 0px)), calc(var(--pw-rowi, 0) * var(--pw-row)));
-  transition: transform 200ms var(--ease-out), border-color var(--dur-2) ease, opacity var(--dur-3) ease;
+  transform: translateX(-50%);
+  transition: border-color var(--dur-2) ease, opacity var(--dur-3) ease;
 }
 
 .parade__walker.is-me .parade__tag {
@@ -977,13 +1662,14 @@
 }
 
 .parade--compact .parade__name {
-  max-width: 50px;
+  max-width: 46px;
 }
 
 .parade--compact .parade__debt {
   margin-right: -2px;
   padding: 0 3px;
-  font-size: 7.5px;
+  font-size: 7px;
+  letter-spacing: 0.02em;
 }
 
 .parade--compact .parade__crown {
@@ -1093,12 +1779,20 @@
   animation: pw-drop 700ms linear infinite;
 }
 
+.parade__drop:nth-child(2) {
+  animation-delay: -250ms;
+}
+
+.parade__drop:nth-child(3) {
+  animation-delay: -500ms;
+}
+
 /* Stains left by a throw. */
 .parade__stain {
   position: absolute;
-  top: 15%;
-  left: 14%;
-  width: 72%;
+  top: 13%;
+  left: 6%;
+  width: 54%;
   aspect-ratio: 1;
   pointer-events: none;
   transition: opacity 600ms ease;
@@ -1119,7 +1813,9 @@
 }
 
 .parade__stain--water {
-  top: 10%;
+  top: 8%;
+  left: 14%;
+  width: 72%;
 }
 
 .parade__stain.is-fading {
@@ -1478,7 +2174,7 @@
 
 .look-editor {
   display: grid;
-  grid-template-columns: 188px minmax(0, 1fr);
+  grid-template-columns: 204px minmax(0, 1fr);
   align-items: start;
   gap: var(--space-4);
   min-width: 0;
@@ -1540,9 +2236,9 @@
   display: grid;
   place-items: end center;
   width: 100%;
-  height: 214px;
+  height: 270px;
   margin: 0;
-  padding: 0 0 26px;
+  padding: 0 0 30px;
   overflow: hidden;
   border: 1px solid var(--hairline-strong);
   border-radius: var(--radius-lg);
@@ -1555,7 +2251,21 @@
 }
 
 .look-editor__stage .avatar-char {
-  --av-size: 150px;
+  --av-size: 196px;
+}
+
+/* A pet that trails behind: keep the pair centred on the stage. */
+.look-editor__stage .avatar-char[data-pet="dog"],
+.look-editor__stage .avatar-char[data-pet="cat"],
+.look-editor__stage .avatar-char[data-pet="dragon"] {
+  margin-left: calc(var(--av-size) * 0.2);
+}
+
+.look-editor__stage .avatar-char.is-left[data-pet="dog"],
+.look-editor__stage .avatar-char.is-left[data-pet="cat"],
+.look-editor__stage .avatar-char.is-left[data-pet="dragon"] {
+  margin-right: calc(var(--av-size) * 0.2);
+  margin-left: 0;
 }
 
 .look-editor__rays {
@@ -1569,12 +2279,12 @@
 
 .look-editor__podium {
   position: absolute;
-  bottom: 17px;
+  bottom: 20px;
   left: 50%;
   z-index: -1;
-  width: 124px;
-  height: 22px;
-  margin-left: -62px;
+  width: 156px;
+  height: 27px;
+  margin-left: -78px;
   border-radius: 50%;
   background: radial-gradient(ellipse, rgba(243, 223, 162, 0.3) 0%, rgba(243, 223, 162, 0) 70%);
   box-shadow: inset 0 0 0 1px rgba(243, 223, 162, 0.4);
@@ -1611,25 +2321,38 @@
 /* "Probátelo": the unowned item currently shown on the character. */
 .look-try {
   display: grid;
-  gap: 6px;
-  padding: 8px 10px;
+  gap: 4px;
+  min-width: 0;
+  padding: 8px 10px 10px;
   border: 1px solid var(--gold-500);
   border-radius: var(--radius-md);
   background: linear-gradient(180deg, rgba(212, 175, 90, 0.18), rgba(212, 175, 90, 0.06));
 }
 
-.look-try__text {
+.look-try__head {
   display: flex;
-  flex-direction: column;
-  gap: 1px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
   min-width: 0;
+}
+
+.look-try .look-try__stop {
+  --btn-h: 1.5rem;
+  margin: -3px -6px -3px 0;
+}
+
+.look-try > .btn {
+  margin-top: 4px;
+  padding: 0 0.5rem;
 }
 
 .look-try__label {
   color: var(--gold-300);
   font-size: var(--fs-2xs);
   font-weight: 600;
-  letter-spacing: var(--tracking-caps);
+  letter-spacing: 0.08em;
+  line-height: 1.2;
   text-transform: uppercase;
 }
 
@@ -1647,21 +2370,6 @@
   color: var(--oxblood-200);
   font-size: var(--fs-2xs);
   line-height: var(--lh-snug);
-}
-
-.look-try__actions {
-  display: flex;
-  gap: 6px;
-}
-
-.look-try__actions .btn {
-  flex: 1 1 auto;
-  min-width: 0;
-  padding: 0 0.5rem;
-}
-
-.look-try__actions .btn--ghost {
-  flex: 0 0 auto;
 }
 
 /* Tabs */
@@ -1822,6 +2530,10 @@
   display: block;
   width: 46px;
   height: 46px;
+  overflow: hidden;
+  border-radius: 50%;
+  background: radial-gradient(circle at 50% 34%, rgba(126, 72, 150, 0.4) 0%, rgba(4, 2, 6, 0.55) 78%);
+  box-shadow: inset 0 0 0 1px var(--border-strong);
 }
 
 .look-style.is-active {
@@ -2044,7 +2756,7 @@
 .look-editor--narrow .look-editor__preview {
   z-index: 2;
   display: grid;
-  grid-template-columns: 128px minmax(0, 1fr);
+  grid-template-columns: 124px minmax(0, 1fr);
   grid-template-rows: auto 1fr;
   gap: 8px;
   margin: 0 -4px;
@@ -2055,19 +2767,19 @@
 
 .look-editor--narrow .look-editor__stage {
   grid-row: 1 / span 2;
-  height: 150px;
-  padding-bottom: 18px;
+  height: 158px;
+  padding-bottom: 16px;
 }
 
 .look-editor--narrow .look-editor__stage .avatar-char {
-  --av-size: 104px;
+  --av-size: 116px;
 }
 
 .look-editor--narrow .look-editor__podium {
-  bottom: 11px;
-  width: 92px;
+  bottom: 9px;
+  width: 96px;
   height: 17px;
-  margin-left: -46px;
+  margin-left: -48px;
 }
 
 .look-editor--narrow .look-editor__turn {
@@ -2076,8 +2788,23 @@
   padding: 3px 6px;
 }
 
+.look-editor--narrow .look-editor__purse {
+  flex-wrap: wrap;
+  gap: 0 var(--space-2);
+  padding: 5px 9px;
+}
+
+.look-editor--narrow .look-editor__purse-label {
+  letter-spacing: 0.08em;
+}
+
 .look-editor--narrow .look-try {
   align-self: start;
+  padding: 6px 8px 8px;
+}
+
+.look-editor--narrow .look-try > .btn {
+  font-size: var(--fs-xs);
 }
 
 .look-editor--narrow .look-cards {
@@ -2088,6 +2815,16 @@
 .look-editor--narrow .look-card__art {
   width: 56px;
   height: 56px;
+}
+
+/* Very narrow container: the stage gets a row of its own. */
+.look-editor--tiny .look-editor__preview {
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: none;
+}
+
+.look-editor--tiny .look-editor__stage {
+  grid-row: auto;
 }
 
 /* --------------------------------------------------------------------------
@@ -2101,4 +2838,11 @@
     animation: none !important;
     transition: none !important;
   }
+}
+
+/* createParade({ reducedMotion: true }) */
+.parade--still *,
+.parade-fx--still * {
+  animation: none !important;
+  transition: none !important;
 }

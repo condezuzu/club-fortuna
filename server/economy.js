@@ -64,7 +64,7 @@ function cosmetic(slot, key, name, price) {
   return Object.freeze({ id: `${slot}:${key}`, slot, key, name, price });
 }
 // Outfits, hand items and the dragon go on sale together with the client that can draw them.
-const NEW_LOOKS_READY = false;
+const NEW_LOOKS_READY = true;
 const NEW_SLOTS = ['outfit', 'hand'];
 const COSMETICS = Object.freeze(
   [
@@ -126,6 +126,45 @@ const RAIN = Object.freeze({ cost: 1000, each: 100 });
 const TIPS = Object.freeze([100, 500, 2000]);
 const TIP_MAX = 100000;
 
+/** Achievements: unlocked once per player, kept in the profile, shown on the player card. */
+const BADGES = Object.freeze([
+  { id: 'x10', glyph: '🔥', name: 'Golpe de suerte', desc: 'Cobrar 10 veces lo apostado en una sola jugada' },
+  { id: 'x100', glyph: '💎', name: 'Cien a uno', desc: 'Cobrar 100 veces lo apostado en una sola jugada' },
+  { id: 'x1000', glyph: '🌟', name: 'Uno en un millón', desc: 'Cobrar 1.000 veces lo apostado' },
+  { id: 'blackjack', glyph: '🃏', name: 'Veintiuno', desc: 'Sacar un blackjack natural' },
+  { id: 'jackpot', glyph: '🎰', name: 'Rompí la máquina', desc: 'Llevarse el pozo de las tragamonedas' },
+  { id: 'rounds100', glyph: '🎲', name: 'Habitué', desc: 'Jugar 100 jugadas' },
+  { id: 'rounds1000', glyph: '🏛️', name: 'Parte del mobiliario', desc: 'Jugar 1.000 jugadas' },
+  { id: 'level10', glyph: '🎖️', name: 'Veterano', desc: 'Llegar a nivel 10' },
+  { id: 'peak10k', glyph: '💰', name: 'Diez mil', desc: 'Llegar a tener 10.000 fichas' },
+  { id: 'peak100k', glyph: '🏦', name: 'Cien mil', desc: 'Llegar a tener 100.000 fichas' },
+  { id: 'peak1m', glyph: '👑', name: 'Millonario', desc: 'Llegar a tener 1.000.000 de fichas' },
+  { id: 'mvp', glyph: '⭐', name: 'Figura del equipo', desc: 'Ser la figura cuando se cumple una cuota' },
+  { id: 'duelist', glyph: '🤺', name: 'Duelista', desc: 'Ganar un duelo a cara o cruz' },
+  { id: 'rainmaker', glyph: '💸', name: 'Hace llover', desc: 'Hacer llover fichas sobre el equipo' },
+  { id: 'generous', glyph: '🎩', name: 'Buen propinero', desc: 'Dejarle 1.000 fichas de propina al crupier' },
+  { id: 'dressed', glyph: '🧢', name: 'Con estilo', desc: 'Comprar un accesorio para el avatar' },
+  { id: 'debtfree', glyph: '🧾', name: 'Cuentas claras', desc: 'Saldar una deuda con el prestamista' },
+  { id: 'rescued', glyph: '🛟', name: 'Sobreviviente', desc: 'Ganarse un rescate' },
+]);
+const PEAK_BADGES = Object.freeze([
+  [10000, 'peak10k'],
+  [100000, 'peak100k'],
+  [1000000, 'peak1m'],
+]);
+
+/**
+ * Daily bonus: once every 20 hours. Coming back within two days keeps the
+ * streak going, and every day of streak (up to a week) adds to the bonus.
+ */
+const DAILY = Object.freeze({ everyMs: 20 * 3600 * 1000, streakMs: 48 * 3600 * 1000, base: 500, perDay: 200, maxStreak: 7 });
+function dailyBonus(streak) {
+  return DAILY.base + DAILY.perDay * (Math.max(1, Math.min(DAILY.maxStreak, streak)) - 1);
+}
+
+/** Coin-flip duels between two members: winner takes the other's stake. */
+const DUEL = Object.freeze({ min: 10, max: 100000, ttlMs: 30000, cooldownMs: 2500 });
+
 const HISTORY_MAX = 30;
 
 /** Everything with a price and an owner, by id. */
@@ -155,6 +194,8 @@ function catalogView() {
     rain: RAIN,
     tips: TIPS,
     lookFree: LOOK_FREE,
+    badges: BADGES,
+    duel: DUEL,
   };
 }
 
@@ -183,6 +224,11 @@ module.exports = {
   TIPS,
   TIP_MAX,
   HISTORY_MAX,
+  DUEL,
+  BADGES,
+  PEAK_BADGES,
+  DAILY,
+  dailyBonus,
   ITEMS,
   RESCUE_GAME,
   catalogView,

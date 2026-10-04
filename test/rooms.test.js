@@ -116,7 +116,7 @@ test('createRoom: code, snapshot shape and starting balance', () => {
   const room = ana.room();
   assert.match(room.code, /^[A-Z]{4}$/);
   for (const letter of room.code) assert.ok(CODE_ALPHABET.includes(letter));
-  assert.deepEqual(Object.keys(room).sort(), ['chat', 'code', 'economy', 'feed', 'goal', 'players', 'rescue', 'tables', 'you']);
+  assert.deepEqual(Object.keys(room).sort(), ['chat', 'code', 'daily', 'economy', 'feed', 'goal', 'players', 'rescue', 'tables', 'you']);
   assert.equal(room.you, ana.you.id);
   assert.deepEqual(room.players, [
     {
@@ -150,6 +150,8 @@ test('createRoom: code, snapshot shape and starting balance', () => {
       },
       net: 0,
       peak: 1000,
+      tips: 0,
+      badges: 0,
     },
   ]);
   assert.deepEqual(room.tables, { vault: { seated: [] }, mint: { seated: [] } });
@@ -672,7 +674,9 @@ test('level-up: celebration, feed line and a bonus that leaves the profit untouc
   };
   assert.deepEqual(ana.last('celebrate'), expectedCelebration);
   assert.deepEqual(beto.last('celebrate'), expectedCelebration, 'the whole room celebrates, seated or not');
-  assert.deepEqual(ana.messages.map((message) => message.t), ['room', 'game', 'celebrate']);
+  assert.deepEqual(ana.messages.map((message) => message.t), ['room', 'game', 'celebrate', 'badge']);
+  assert.equal(ana.last('badge').badge.id, 'mvp', 'the figure of the quota gets an achievement, after everything else');
+  assert.equal(beto.last('badge'), undefined);
 
   const room = beto.room();
   assert.deepEqual(room.goal, {

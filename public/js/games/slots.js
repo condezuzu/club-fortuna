@@ -7,6 +7,11 @@ const IDS = Object.keys(GLYPH);
 export default {
   id: 'slots',
   icon: 'crown',
+  help: [
+    "Elegí la apuesta y girá (también con la barra espaciadora). Tres símbolos iguales pagan según la tabla de premios.",
+    "Dos cerezas en los dos primeros rodillos pagan el doble de la apuesta, salga lo que salga en el tercero.",
+    "Cada giro de cualquier jugador suma al pozo del equipo. Tres sietes se llevan el pozo entero, además de su premio.",
+  ],
   art(ui) {
     return ui.el('div', { class: 'art-slots' }, ...[0, 1, 2].map(() => ui.el('span', null, GLYPH.seven)));
   },

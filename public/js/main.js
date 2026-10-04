@@ -217,6 +217,33 @@ function handle(m) {
     case 'rescueChallenge':
       rescueGame(m);
       break;
+    case 'daily':
+      audio.play('bigwin');
+      ui.celebrate({ kind: 'win', amount: m.bonus });
+      toast(
+        `¡Bono diario! +${formatChips(m.bonus)} fichas. ${m.streak > 1 ? `Racha de ${m.streak} días: volvé` : 'Volvé'} mañana y el bono crece.`,
+        { kind: 'win', duration: 7000 }
+      );
+      mascot.say('tip', 'Tome, su bono del día. No se lo gaste todo en la primera mano. O sí, usted sabrá.');
+      break;
+    case 'badge':
+      audio.play('bigwin');
+      toast(`¡Logro desbloqueado! ${m.badge.glyph} ${m.badge.name}: ${m.badge.desc}.`, { kind: 'win', duration: 7000 });
+      mascot.say('levelup');
+      if (S.room) parade.cheer(S.room.you);
+      break;
+    case 'duel':
+      duelIncoming(m.duel);
+      break;
+    case 'duelSent':
+      toast(`Retaste a ${m.name} por ${formatChips(m.amount)} fichas. Esperando que conteste…`, { kind: 'info', duration: 5000 });
+      break;
+    case 'duelOff':
+      duelOff(m);
+      break;
+    case 'duelResult':
+      duelResult(m);
+      break;
     case 'profileOf':
       if (S.card && S.card.id === m.player.id) S.card.fill(m.player);
       break;
@@ -430,6 +457,8 @@ function buildRoom() {
   R.debt = el('span', { class: 'hud__debt' });
   R.wallet = el('div', { class: 'hud__wallet', title: 'Tus fichas' }, ui.icon('chip'), el('div', { class: 'hud__money' }, R.balance, R.debt));
   R.rescue = createButton('Rescate', { variant: 'danger', size: 'sm', icon: 'lifebuoy', onClick: () => send({ t: 'rescue' }) });
+  R.daily = createButton('Bono diario', { variant: 'primary', size: 'sm', icon: 'gift', onClick: () => send({ t: 'daily' }) });
+  R.daily.classList.add('hud__daily');
   R.meBust = el('span', { class: 'hud__bust' });
   R.meName = el('span', { class: 'hud__name' });
   R.meLevel = el('span', { class: 'hud__level' });
@@ -493,6 +522,7 @@ function buildRoom() {
       el('span', { class: 'hud__room' }, 'Sala ', R.code),
       copy,
       el('span', { class: 'hud__spacer' }),
+      R.daily,
       R.rescue,
       R.wallet,
       meBtn,
@@ -508,7 +538,18 @@ function buildRoom() {
       el(
         'aside',
         { class: 'side' },
-        el('section', { class: 'side__box panel' }, el('h3', { class: 'side__title' }, 'Equipo'), R.players, R.emotes),
+        el(
+          'section',
+          { class: 'side__box panel' },
+          el(
+            'div',
+            { class: 'side__head' },
+            el('h3', { class: 'side__title' }, 'Equipo'),
+            createButton('Podio', { variant: 'ghost', size: 'sm', icon: 'trophy', onClick: openPodium })
+          ),
+          R.players,
+          R.emotes
+        ),
         el('section', { class: 'side__box panel' }, el('h3', { class: 'side__title' }, 'Novedades'), R.feed),
         el('section', { class: 'side__box panel side__box--chat' }, el('h3', { class: 'side__title' }, 'Chat'), R.chatList, chatForm)
       )
@@ -590,7 +631,27 @@ function buildTable(id) {
       createButton('Volver al salón', { variant: 'ghost', size: 'sm', icon: 'back', onClick: () => send({ t: 'stand' }) }),
       el('h2', { class: 'table-bar__title' }, meta.name),
       meta.tier === 'high' ? el('span', { class: 'table-bar__tier' }, 'High Limit') : null,
-      el('span', { class: 'table-bar__limits' }, `Apuestas de ${formatChips(meta.minBet)} a ${formatChips(meta.maxBet)}`)
+      el('span', { class: 'table-bar__limits' }, `Apuestas de ${formatChips(meta.minBet)} a ${formatChips(meta.maxBet)}`),
+      el('span', { class: 'hud__spacer' }),
+      Array.isArray(mod.help)
+        ? createButton('Cómo se juega', {
+            variant: 'secondary',
+            size: 'sm',
+            icon: 'info',
+            onClick: () =>
+              ui.openModal({
+                title: `Cómo se juega: ${meta.name}`,
+                size: 'md',
+                content: el(
+                  'div',
+                  { class: 'rules' },
+                  ...mod.help.map((line) => el('p', null, line)),
+                  el('p', { class: 'rules__limits' }, `En esta mesa las apuestas van de ${formatChips(meta.minBet)} a ${formatChips(meta.maxBet)} fichas.`)
+                ),
+                actions: [{ label: 'Entendido', variant: 'primary' }],
+              }),
+          })
+        : null
     ),
     stage
   );
@@ -674,6 +735,7 @@ function updateRoom() {
   flashBalance(my.balance);
   R.debt.textContent = my.debt > 0 ? `debés ${formatChips(my.debt)}` : '';
   R.rescue.hidden = !(room.rescue && my.balance + my.stake < room.rescue.threshold);
+  paintDaily();
 
   if (R.meChar) R.meChar.update(my);
   else {
@@ -697,6 +759,16 @@ function updateRoom() {
     renderGames();
   }
 }
+
+/** The daily bonus button shows up only while there is a bonus to claim. */
+function paintDaily() {
+  if (!R.daily || !S.room) return;
+  const daily = S.room.daily;
+  const ready = Boolean(daily) && serverNow() >= daily.availableAt;
+  R.daily.hidden = !ready;
+  if (ready) R.daily.setLabel(`Bono diario +${formatChips(daily.bonus)}`);
+}
+setInterval(paintDaily, 30000);
 
 let lastBalance = null;
 function flashBalance(balance) {
@@ -885,6 +957,30 @@ function openProfile(id) {
   const stats = el('div', { class: 'pcard__stats' });
   const actions = el('div', { class: 'pcard__actions' });
   const history = el('div', { class: 'pcard__history' }, el('p', { class: 'side__empty' }, 'Cargando…'));
+  const badgesTitle = el('h4', { class: 'pcard__subtitle' }, 'Logros');
+  const badgesEl = el('div', { class: 'pcard__badges' });
+  const paintBadges = (have) => {
+    const all = S.catalog.badges || [];
+    badgesTitle.textContent = `Logros · ${have.length} de ${all.length}`;
+    clear(badgesEl);
+    for (const badge of all) {
+      const on = have.includes(badge.id);
+      badgesEl.append(
+        el(
+          'button',
+          {
+            class: `pcard__badge${on ? ' is-on' : ''}`,
+            type: 'button',
+            title: `${badge.name}: ${badge.desc}`,
+            'aria-label': `${badge.name}${on ? '' : ' (sin desbloquear)'}`,
+            onClick: () => toast(`${badge.glyph} ${badge.name}: ${badge.desc}${on ? '' : ' (todavía no)'}`, { kind: on ? 'win' : 'info' }),
+          },
+          on ? badge.glyph : '?'
+        )
+      );
+    }
+  };
+  paintBadges([]);
   const stat = (label, value, cls) => el('div', { class: 'pcard__stat' }, el('span', null, label), el('strong', { class: cls || '' }, value));
   let details = null;
   let modal = null;
@@ -918,6 +1014,17 @@ function openProfile(id) {
       );
     } else {
       actions.append(createButton('Regalar fichas', { variant: 'primary', size: 'sm', icon: 'gift', onClick: () => giftModal(p) }));
+      actions.append(
+        createButton('Retar a duelo', {
+          variant: 'secondary',
+          size: 'sm',
+          icon: 'dice',
+          onClick: () => {
+            close();
+            duelModal(p);
+          },
+        })
+      );
       if (p.debt > 0) actions.append(createButton('Pagarle la deuda', { variant: 'secondary', size: 'sm', onClick: () => debtModal(p) }));
       for (const item of S.catalog.throwables) {
         actions.append(
@@ -943,6 +1050,7 @@ function openProfile(id) {
   const fill = (data) => {
     details = data;
     sync();
+    paintBadges(data.badges || []);
     clear(history);
     if (!data.history.length) history.append(el('p', { class: 'side__empty' }, 'Todavía no jugó ninguna mano.'));
     for (const entry of data.history) {
@@ -969,6 +1077,8 @@ function openProfile(id) {
       el('div', { class: 'pcard__top' }, el('div', { class: 'pcard__avatar' }, char), head),
       stats,
       actions,
+      badgesTitle,
+      badgesEl,
       el('h4', { class: 'pcard__subtitle' }, 'Últimas jugadas'),
       history
     ),
@@ -1022,6 +1132,159 @@ function debtModal(p) {
     action: 'Pagar',
     onSubmit: (amount) => send({ t: 'repayFor', to: p.id, amount }),
   });
+}
+
+// ───────────────────────────── podium ─────────────────────────────
+
+/** Who stands out in the room, category by category. */
+function openPodium() {
+  const players = S.room.players;
+  const top = (value) => players.reduce((best, p) => (value(p) > value(best) ? p : best), players[0]);
+  const rows = [];
+  const add = (glyph, title, pick, value, show) => {
+    const p = top(pick);
+    if (!p || (show && !show(p))) return;
+    rows.push(
+      el(
+        'button',
+        { class: 'podium__row', type: 'button', onClick: () => { modal.close(); openProfile(p.id); } },
+        el('span', { class: 'podium__glyph' }, glyph),
+        el('span', { class: 'podium__text' }, el('small', null, title), el('strong', null, p.name)),
+        avatars.createBust(p, { size: 34 }),
+        el('span', { class: 'podium__value' }, value(p))
+      )
+    );
+  };
+  const signed = (n) => `${n > 0 ? '+' : ''}${formatChips(n)}`;
+  add('👑', 'El más rico', (p) => p.balance, (p) => formatChips(p.balance));
+  add('📈', 'El pico más alto', (p) => p.peak, (p) => formatChips(p.peak));
+  add('⭐', 'Figura del equipo', (p) => p.net, (p) => signed(p.net), (p) => p.net > 0);
+  add('💥', 'El mayor premio', (p) => p.stats.biggestWin, (p) => signed(p.stats.biggestWin), (p) => p.stats.biggestWin > 0);
+  add('🎲', 'El más timbero', (p) => p.stats.wagered, (p) => `${formatChips(p.stats.wagered)} apostadas`, (p) => p.stats.wagered > 0);
+  add('🎖️', 'El de más nivel', (p) => p.level, (p) => `Nv ${p.level} · ${p.rank}`, (p) => p.level > 0);
+  add('🏅', 'El de más logros', (p) => p.badges, (p) => `${p.badges} ${p.badges === 1 ? 'logro' : 'logros'}`, (p) => p.badges > 0);
+  add('🎩', 'El más generoso con el crupier', (p) => p.tips, (p) => formatChips(p.tips), (p) => p.tips > 0);
+  add('💸', 'El más endeudado', (p) => p.debt, (p) => `debe ${formatChips(p.debt)}`, (p) => p.debt > 0);
+  add('🧂', 'El más salado', (p) => -p.net, (p) => signed(p.net), (p) => p.net < 0);
+  const modal = ui.openModal({
+    title: 'Podio de la sala',
+    size: 'sm',
+    content: el('div', { class: 'podium' }, ...(rows.length ? rows : [el('p', { class: 'side__empty' }, 'Todavía no hay nada que premiar. A jugar.')])),
+    actions: [{ label: 'Cerrar', variant: 'ghost' }],
+  });
+}
+
+// ───────────────────────────── duels ─────────────────────────────
+
+function duelModal(p) {
+  const my = me();
+  amountModal({
+    title: `Duelo a cara o cruz con ${p.name}`,
+    label: 'Cada uno pone esta cantidad de fichas. El que gana se lleva todo.',
+    value: Math.max(10, Math.min(100, my.balance, p.balance)),
+    action: 'Retar',
+    onSubmit: (amount) => send({ t: 'duel', to: p.id, amount }),
+  });
+}
+
+let duelPrompt = null;
+
+function duelIncoming(duel) {
+  audio.play('notify');
+  const from = playerOf(duel.from) || { name: duel.name, avatar: duel.avatar };
+  const left = el('strong', { class: 'duel-ask__time' }, `${Math.ceil(duel.ttlMs / 1000)} s`);
+  const until = Date.now() + duel.ttlMs;
+  const timer = setInterval(() => {
+    left.textContent = `${Math.max(0, Math.ceil((until - Date.now()) / 1000))} s`;
+  }, 500);
+  const answer = (accept) => () => {
+    send({ t: 'duelAnswer', id: duel.id, accept });
+  };
+  const modal = ui.openModal({
+    title: '¡Te retaron a duelo!',
+    size: 'sm',
+    dismissible: false,
+    content: el(
+      'div',
+      { class: 'duel-ask' },
+      avatars.createAvatar(from, { size: 110 }),
+      el('p', null, el('strong', null, duel.name), ' te reta a cara o cruz por ', el('strong', { class: 'is-gold' }, formatChips(duel.amount)), ' fichas cada uno.'),
+      el('p', { class: 'duel-ask__note' }, 'Se decide con una moneda. Tenés ', left, ' para contestar.')
+    ),
+    actions: [
+      { label: 'Ni loco', variant: 'ghost', onClick: answer(false) },
+      { label: '¡Acepto!', variant: 'primary', onClick: answer(true) },
+    ],
+    onClose: () => clearInterval(timer),
+  });
+  duelPrompt = { id: duel.id, close: () => modal.close() };
+}
+
+function duelOff(m) {
+  if (duelPrompt && duelPrompt.id === m.id) {
+    duelPrompt.close();
+    duelPrompt = null;
+    if (m.reason !== 'declined') toast('El duelo se cayó.', { kind: 'info' });
+    return;
+  }
+  if (m.reason === 'declined') {
+    toast(`${m.name} no aceptó el duelo. 🐔`, { kind: 'info', duration: 5000 });
+    mascot.say('fold', `${m.name} arrugó. Los valientes mueren una vez; los otros, cada vez que los retan.`);
+  } else if (m.reason === 'expired') {
+    toast(`${m.name} no contestó el duelo a tiempo.`, { kind: 'info' });
+  } else {
+    toast('El duelo se cayó: alguno se quedó sin las fichas.', { kind: 'info' });
+  }
+}
+
+function duelResult(m) {
+  if (duelPrompt && duelPrompt.id === m.id) duelPrompt = null;
+  const mine = S.room && (m.winner.id === S.room.you || m.loser.id === S.room.you);
+  const won = S.room && m.winner.id === S.room.you;
+  const winner = playerOf(m.winner.id) || m.winner;
+  const loser = playerOf(m.loser.id) || m.loser;
+  const reduced = ui.prefersReducedMotion();
+  const flipMs = reduced ? 0 : 1900;
+
+  const coin = el(
+    'div',
+    { class: `duel__coin${Math.random() < 0.5 ? ' duel__coin--tails' : ''}` },
+    el('div', { class: 'duel__face duel__face--front' }, avatars.createBust(winner, { size: 96 })),
+    el('div', { class: 'duel__face duel__face--back' }, avatars.createBust(loser, { size: 96 }))
+  );
+  const verdict = el('div', { class: 'duel__verdict' });
+  const overlay = el(
+    'div',
+    { class: 'duel', onClick: () => overlay.remove() },
+    el(
+      'div',
+      { class: 'duel__box' },
+      el('p', { class: 'duel__title' }, 'Duelo a cara o cruz'),
+      el('p', { class: 'duel__names' }, el('strong', null, winner.name), ' vs ', el('strong', null, loser.name), ` · ${formatChips(m.amount)} fichas cada uno`),
+      coin,
+      verdict
+    )
+  );
+  document.body.append(overlay);
+  if (!reduced) audio.play('spin');
+  setTimeout(() => {
+    overlay.classList.add('is-done');
+    verdict.append(
+      el('strong', { class: 'duel__winner' }, `¡Ganó ${winner.name}!`),
+      el('span', { class: mine ? (won ? 'is-up' : 'is-down') : '' }, mine ? (won ? `+${formatChips(m.amount)} fichas para vos` : `-${formatChips(m.amount)} fichas`) : `Se lleva ${formatChips(m.amount)} fichas de ${loser.name}`)
+    );
+    parade.cheer(m.winner.id);
+    parade.sad(m.loser.id);
+    if (mine) {
+      audio.play(won ? 'bigwin' : 'lose');
+      mascot.say(won ? 'win' : 'lose');
+      if (won) ui.celebrate({ kind: 'win', amount: m.amount });
+    } else {
+      audio.play('notify');
+      mascot.say('emote', `${loser.name} acaba de regalarle ${formatChips(m.amount)} fichas a ${winner.name}. Qué generosidad.`);
+    }
+  }, flipMs);
+  setTimeout(() => overlay.remove(), flipMs + 3200);
 }
 
 // ───────────────────────────── wardrobe ─────────────────────────────

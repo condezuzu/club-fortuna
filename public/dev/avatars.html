@@ -97,10 +97,25 @@
 
     .avd-matrix {
       display: grid;
-      grid-template-columns: 7rem repeat(6, minmax(3.75rem, 1fr));
+      grid-template-columns: 7rem repeat(var(--cols, 6), minmax(4rem, 1fr));
       align-items: end;
       gap: var(--space-3) var(--space-2);
-      min-width: 34rem;
+      min-width: calc(7rem + var(--cols, 6) * 4.5rem);
+    }
+
+    /* avatarLab.show(): a magnifier over the page (click the backdrop to close) */
+    .avd-lab {
+      position: fixed;
+      inset: 0;
+      z-index: 99999;
+      display: flex;
+      flex-wrap: wrap;
+      align-content: flex-start;
+      align-items: flex-end;
+      gap: 8px 26px;
+      padding: 34px 44px;
+      overflow: auto;
+      background: #160e1d;
     }
 
     .avd-scroll {
