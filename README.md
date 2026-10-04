@@ -31,6 +31,14 @@ Abrí `http://localhost:3000`. Al arrancar, el servidor también muestra la dire
 
 Para probar solo, abrí otra pestaña: cada pestaña es un jugador distinto.
 
+## Publicarlo como página web
+
+El repo incluye `render.yaml` para subirlo gratis a [Render](https://render.com):
+
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/condezuzu/club-fortuna)
+
+En el plan gratuito el servidor se duerme tras 15 minutos sin visitas (tarda cerca de un minuto en despertar) y las salas viven en memoria, así que se pierden cuando se duerme o se reinicia.
+
 ## Estructura
 
 - `server/` — servidor HTTP + WebSocket. Decide todos los resultados; el navegador solo envía jugadas.
