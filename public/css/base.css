@@ -1,0 +1,447 @@
+/* ==========================================================================
+   Club Fortuna — base layer
+   Reset, page backdrop, typography, focus, scrollbars and utilities.
+   Requires tokens.css.
+   ========================================================================== */
+
+/* ---- Reset --------------------------------------------------------------- */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  height: 100%;
+  background: var(--ink-950);
+  color-scheme: dark;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+  -webkit-tap-highlight-color: transparent;
+}
+
+body {
+  margin: 0;
+  min-height: 100%;
+  font-family: var(--font-ui);
+  font-size: var(--fs-md);
+  line-height: var(--lh-normal);
+  color: var(--text-1);
+  /* the display serif ships old-style figures by default; a casino wants lining ones */
+  font-variant-numeric: lining-nums;
+  font-feature-settings: "lnum" 1;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+  overflow-wrap: break-word;
+}
+
+/* Page backdrop: ink / aubergine with a soft vignette and a faint art-deco
+   fan (scallop) pattern. It lives on a fixed pseudo-element so it never
+   scrolls and never repaints with the content. The tile's fill colour must
+   match --ink-950. */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    radial-gradient(ellipse 110% 100% at 50% 42%, rgba(3, 1, 5, 0) 42%, rgba(3, 1, 5, 0.8) 100%),
+    radial-gradient(ellipse 80% 62% at 50% 0%, rgba(126, 72, 150, 0.22) 0%, rgba(126, 72, 150, 0) 70%),
+    radial-gradient(ellipse 60% 40% at 50% 100%, rgba(143, 31, 49, 0.12) 0%, rgba(143, 31, 49, 0) 70%),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='72' height='36' viewBox='0 0 72 36'%3E%3Cdefs%3E%3Cg id='f' fill='%230b0710' stroke='%23d4af5a' stroke-opacity='.075'%3E%3Ccircle r='35.5'/%3E%3Ccircle r='27'/%3E%3Ccircle r='18.5'/%3E%3Ccircle r='10'/%3E%3C/g%3E%3C/defs%3E%3Cuse href='%23f' x='0' y='-18'/%3E%3Cuse href='%23f' x='72' y='-18'/%3E%3Cuse href='%23f' x='36' y='0'/%3E%3Cuse href='%23f' x='0' y='18'/%3E%3Cuse href='%23f' x='72' y='18'/%3E%3Cuse href='%23f' x='36' y='36'/%3E%3Cuse href='%23f' x='0' y='54'/%3E%3Cuse href='%23f' x='72' y='54'/%3E%3C/svg%3E") center top / 72px 36px repeat,
+    var(--ink-950);
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6,
+p,
+figure,
+blockquote,
+dl,
+dd {
+  margin: 0;
+}
+
+ul[class],
+ol[class] {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+img,
+svg,
+canvas,
+video {
+  display: block;
+  max-width: 100%;
+}
+
+button,
+input,
+select,
+textarea {
+  margin: 0;
+  font: inherit;
+  color: inherit;
+  letter-spacing: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+button:disabled {
+  cursor: not-allowed;
+}
+
+[hidden] {
+  display: none !important;
+}
+
+/* ---- Typography ---------------------------------------------------------- */
+
+h1,
+h2,
+h3,
+h4 {
+  font-family: var(--font-display);
+  font-weight: 700;
+  line-height: var(--lh-tight);
+  letter-spacing: 0.005em;
+  color: var(--text-1);
+  text-wrap: balance;
+}
+
+h1 {
+  font-size: var(--fs-4xl);
+  font-weight: 800;
+}
+
+h2 {
+  font-size: var(--fs-3xl);
+}
+
+h3 {
+  font-size: var(--fs-2xl);
+}
+
+h4 {
+  font-size: var(--fs-xl);
+}
+
+small {
+  font-size: var(--fs-sm);
+}
+
+strong,
+b {
+  font-weight: 700;
+}
+
+a {
+  color: var(--gold-300);
+  text-decoration: underline;
+  text-decoration-color: rgba(230, 200, 120, 0.4);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.2em;
+  transition: color var(--dur-2) ease, text-decoration-color var(--dur-2) ease;
+}
+
+a:hover {
+  color: var(--gold-100);
+  text-decoration-color: currentColor;
+}
+
+code,
+kbd,
+samp {
+  font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, "Liberation Mono", monospace;
+  font-size: 0.9em;
+}
+
+code {
+  padding: 0.1em 0.35em;
+  border-radius: var(--radius-xs);
+  background: rgba(244, 237, 220, 0.07);
+  color: var(--gold-200);
+}
+
+hr {
+  height: 1px;
+  margin: var(--space-5) 0;
+  border: 0;
+  background: linear-gradient(90deg, transparent, var(--hairline-strong), transparent);
+}
+
+::selection {
+  background: rgba(212, 175, 90, 0.38);
+  color: var(--ivory-50);
+}
+
+/* Display voice ------------------------------------------------------------ */
+
+/* Serif display heading at any element. */
+.display {
+  font-family: var(--font-display);
+  font-weight: 800;
+  line-height: var(--lh-tight);
+  letter-spacing: 0.01em;
+}
+
+/* Small uppercase brass label that sits above headings and groups. */
+.eyebrow {
+  font-family: var(--font-ui);
+  font-size: var(--fs-2xs);
+  font-weight: 600;
+  line-height: 1.2;
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  color: var(--gold-300);
+}
+
+/* Big numbers: display serif with lining, tabular figures. */
+.numeral {
+  font-family: var(--font-numeral);
+  font-weight: 700;
+  font-variant-numeric: lining-nums tabular-nums;
+  font-feature-settings: "lnum" 1, "tnum" 1;
+  letter-spacing: 0.01em;
+}
+
+/* Room codes: 4 widely spaced serif capitals. */
+.room-code {
+  font-family: var(--font-numeral);
+  font-weight: 800;
+  letter-spacing: var(--tracking-code);
+  text-transform: uppercase;
+  /* optically re-centre: the last letter carries trailing tracking */
+  margin-right: calc(var(--tracking-code) * -1);
+  color: var(--gold-200);
+}
+
+/* Brass gradient lettering (use on short display text only). */
+.text-brass {
+  color: var(--gold-300);
+}
+
+@supports ((-webkit-background-clip: text) or (background-clip: text)) {
+  .text-brass {
+    /* the extra box below keeps descenders inside the painted background */
+    margin-bottom: -0.2em;
+    padding-bottom: 0.2em;
+    background: var(--grad-gold-text);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    color: transparent;
+  }
+}
+
+/* The brand wordmark: "Club Fortuna". */
+.wordmark {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5em;
+  font-family: var(--font-display);
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: 0.035em;
+  color: var(--gold-200);
+  white-space: nowrap;
+}
+
+.wordmark .ornament {
+  width: 1.5em;
+  height: 1.5em;
+  color: var(--gold-400);
+}
+
+/* The mandatory play-money note. */
+.fineprint {
+  font-size: var(--fs-2xs);
+  letter-spacing: 0.08em;
+  color: var(--text-3);
+}
+
+/* ---- Focus --------------------------------------------------------------- */
+
+:focus {
+  outline: none;
+}
+
+:focus-visible {
+  outline: 2px solid var(--gold-300);
+  outline-offset: 2px;
+}
+
+/* ---- Scrollbars ---------------------------------------------------------- */
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--ink-600) transparent;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  border: 2px solid transparent;
+  border-radius: var(--radius-pill);
+  background: var(--ink-600);
+  background-clip: padding-box;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--ink-500);
+  background-clip: padding-box;
+}
+
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+/* ---- Utilities ----------------------------------------------------------- */
+
+.sr-only {
+  position: absolute !important;
+  width: 1px !important;
+  height: 1px !important;
+  margin: -1px !important;
+  padding: 0 !important;
+  overflow: hidden !important;
+  clip: rect(0, 0, 0, 0) !important;
+  white-space: nowrap !important;
+  border: 0 !important;
+}
+
+.u-hidden {
+  display: none !important;
+}
+
+.u-row {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.u-stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.u-wrap {
+  flex-wrap: wrap;
+}
+
+.u-center {
+  align-items: center;
+  justify-content: center;
+}
+
+.u-between {
+  justify-content: space-between;
+}
+
+.u-end {
+  justify-content: flex-end;
+}
+
+.u-grow {
+  flex: 1 1 0%;
+  min-width: 0;
+}
+
+.u-gap-1 {
+  gap: var(--space-1);
+}
+
+.u-gap-2 {
+  gap: var(--space-2);
+}
+
+.u-gap-3 {
+  gap: var(--space-3);
+}
+
+.u-gap-4 {
+  gap: var(--space-4);
+}
+
+.u-gap-5 {
+  gap: var(--space-5);
+}
+
+.u-truncate {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.u-tabular {
+  font-variant-numeric: lining-nums tabular-nums;
+  font-feature-settings: "lnum" 1, "tnum" 1;
+}
+
+.u-serif {
+  font-family: var(--font-display);
+}
+
+.u-center-text {
+  text-align: center;
+}
+
+.u-gold {
+  color: var(--gold-300);
+}
+
+.u-muted {
+  color: var(--text-3);
+}
+
+.u-soft {
+  color: var(--text-2);
+}
+
+.u-win {
+  color: var(--win);
+}
+
+.u-danger {
+  color: var(--danger);
+}
+
+.u-no-select {
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* ---- Reduced motion ------------------------------------------------------ */
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    transition-delay: 0s !important;
+    scroll-behavior: auto !important;
+  }
+}

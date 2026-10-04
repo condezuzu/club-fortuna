@@ -1,0 +1,240 @@
+/* ==========================================================================
+   Club Fortuna — design tokens
+   --------------------------------------------------------------------------
+   Late-night private members' club: ink / aubergine backdrop, emerald felt,
+   brass used sparingly, ivory cards, oxblood as the secondary accent.
+   Everything else in the design system (base.css, components.css, ui.js and
+   every game stylesheet) must be expressed with these custom properties.
+   ========================================================================== */
+
+:root {
+  color-scheme: dark;
+
+  /* ---- Ink & aubergine (backdrop, surfaces) ---------------------------- */
+  --ink-950: #0b0710; /* page colour — keep in sync with the tile in base.css */
+  --ink-900: #110a17;
+  --ink-850: #160e1d;
+  --ink-800: #1c1325;
+  --ink-750: #23182d;
+  --ink-700: #2b1e37;
+  --ink-600: #3b2b49;
+  --ink-500: #524060;
+  --ink-400: #6f5c7e;
+  --ink-300: #9383a0;
+
+  /* ---- Emerald felt ----------------------------------------------------- */
+  --felt-950: #041a13;
+  --felt-900: #06261c;
+  --felt-800: #0a3627;
+  --felt-700: #0e4733;
+  --felt-600: #125a41;
+  --felt-500: #186f50;
+  --felt-400: #258a66;
+  --felt-300: #46a985;
+
+  /* ---- Brass / gold ramp ------------------------------------------------ */
+  --gold-50: #fff8e1;
+  --gold-100: #fbefc9;
+  --gold-200: #f3dfa2;
+  --gold-300: #e6c878;
+  --gold-400: #d4af5a;
+  --gold-500: #b8923f;
+  --gold-600: #94722c;
+  --gold-700: #6e5320;
+  --gold-800: #4a3716;
+  --gold-900: #2b200d;
+
+  /* ---- Ivory (cards, light ink) ----------------------------------------- */
+  --ivory-50: #fffdf6;
+  --ivory-100: #faf4e3;
+  --ivory-200: #f0e7cf;
+  --ivory-300: #e0d3b3;
+  --ivory-400: #c7b891;
+
+  /* ---- Oxblood (secondary accent, danger, card backs) ------------------- */
+  --oxblood-200: #f1a3ac;
+  --oxblood-300: #dc5a68;
+  --oxblood-400: #b93445;
+  --oxblood-500: #8f1f31;
+  --oxblood-600: #6c1525;
+  --oxblood-700: #4a0d19;
+  --oxblood-800: #2f0810;
+
+  /* ---- Text levels ------------------------------------------------------ */
+  --text-1: #f4eddc;            /* primary, warm ivory */
+  --text-2: #c9bfcb;            /* secondary */
+  --text-3: #958a9c;            /* tertiary / captions */
+  --text-4: #675c6e;            /* disabled / placeholders */
+  --text-gold: var(--gold-200);
+  --text-on-gold: #21160a;      /* ink on brass buttons */
+  --text-on-ivory: #1c1a24;     /* ink on cards */
+
+  /* ---- Semantic --------------------------------------------------------- */
+  --win: #62d39b;
+  --win-soft: rgba(98, 211, 155, 0.16);
+  --danger: #e5596a;
+  --danger-soft: rgba(229, 89, 106, 0.16);
+  --info: #86b9ea;
+  --info-soft: rgba(134, 185, 234, 0.16);
+
+  /* ---- Surfaces & lines ------------------------------------------------- */
+  --surface-0: var(--ink-900);
+  --surface-1: var(--ink-850);
+  --surface-2: var(--ink-800);
+  --surface-3: var(--ink-750);
+  --surface-glass: rgba(12, 7, 17, 0.72);
+  --hairline: rgba(212, 175, 90, 0.22);          /* brass hairline */
+  --hairline-strong: rgba(212, 175, 90, 0.48);
+  --border-subtle: rgba(244, 237, 220, 0.08);
+  --border-strong: rgba(244, 237, 220, 0.16);
+  --felt-print: rgba(243, 223, 162, 0.58);       /* lettering printed on felt */
+  --felt-line: rgba(243, 223, 162, 0.32);        /* lines printed on felt */
+
+  /* ---- Gradients -------------------------------------------------------- */
+  --grad-brass: linear-gradient(180deg, #f8e7ae 0%, #e4c46e 30%, #c9a148 64%, #a97f30 100%);
+  --grad-brass-h: linear-gradient(90deg, #a97f30 0%, #d9b65e 35%, #f6e3a6 60%, #c9a148 100%);
+  --grad-gold-text: linear-gradient(180deg, #fff6d6 0%, #f2d98f 34%, #c79f47 68%, #f0d68a 100%);
+  --grad-oxblood: linear-gradient(180deg, #a92c3f 0%, #7d1a2b 100%);
+  --grad-surface: linear-gradient(180deg, rgba(255, 255, 255, 0.04) 0%, rgba(255, 255, 255, 0) 42%);
+
+  /* ---- Typography ------------------------------------------------------- */
+  --font-display: "Playfair Display", "Bodoni MT", "Didot", "Bodoni 72", Georgia, "Times New Roman", serif;
+  /* numerals, card ranks and room codes: no Georgia (it only has old-style figures) */
+  --font-numeral: "Playfair Display", "Bodoni MT", "Didot", "Bodoni 72", "Times New Roman", Times, serif;
+  --font-ui: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+
+  --fs-2xs: 0.6875rem;  /* 11 */
+  --fs-xs: 0.75rem;     /* 12 */
+  --fs-sm: 0.8125rem;   /* 13 */
+  --fs-md: 0.9375rem;   /* 15 */
+  --fs-lg: 1.125rem;    /* 18 */
+  --fs-xl: 1.375rem;    /* 22 */
+  --fs-2xl: 1.75rem;    /* 28 */
+  --fs-3xl: 2.25rem;    /* 36 */
+  --fs-4xl: clamp(2.5rem, 6vw, 3.75rem);
+  --fs-5xl: clamp(3rem, 9vw, 5.5rem);
+
+  --lh-tight: 1.1;
+  --lh-snug: 1.3;
+  --lh-normal: 1.5;
+  --tracking-caps: 0.18em;  /* small uppercase labels */
+  --tracking-code: 0.32em;  /* room codes */
+
+  /* ---- Spacing (4 px grid) ---------------------------------------------- */
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.5rem;
+  --space-6: 2rem;
+  --space-7: 3rem;
+  --space-8: 4rem;
+
+  /* ---- Radii ------------------------------------------------------------ */
+  --radius-xs: 4px;
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 16px;
+  --radius-xl: 28px;
+  --radius-pill: 999px;
+
+  /* ---- Elevation -------------------------------------------------------- */
+  --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.45);
+  --shadow-2: 0 2px 4px rgba(0, 0, 0, 0.35), 0 8px 20px rgba(0, 0, 0, 0.35);
+  --shadow-3: 0 4px 8px rgba(0, 0, 0, 0.4), 0 16px 40px rgba(0, 0, 0, 0.5);
+  --shadow-4: 0 8px 16px rgba(0, 0, 0, 0.45), 0 32px 90px rgba(0, 0, 0, 0.7);
+  --glow-gold: 0 0 0 1px rgba(230, 200, 120, 0.55), 0 0 22px rgba(230, 200, 120, 0.38);
+  --glow-win: 0 0 0 1px rgba(98, 211, 155, 0.5), 0 0 22px rgba(98, 211, 155, 0.3);
+  --focus-ring: 0 0 0 2px var(--ink-950), 0 0 0 4px var(--gold-300);
+
+  /* ---- Layers ----------------------------------------------------------- */
+  --z-base: 0;
+  --z-raised: 10;
+  --z-banner: 50;      /* showBanner, inside a game stage */
+  --z-sticky: 100;
+  --z-hud: 200;
+  --z-overlay: 400;    /* drawers, popovers */
+  --z-modal: 600;
+  --z-fly: 700;        /* flying chips */
+  --z-toast: 800;
+  --z-celebrate: 900;
+  --z-tooltip: 1000;
+
+  /* ---- Motion ----------------------------------------------------------- */
+  --dur-1: 120ms;
+  --dur-2: 200ms;
+  --dur-3: 320ms;
+  --dur-4: 480ms;
+  --dur-5: 800ms;
+  --dur-flip: 520ms;
+  --dur-deal: 440ms;
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in: cubic-bezier(0.5, 0, 0.75, 0);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --ease-flip: cubic-bezier(0.3, 0.85, 0.3, 1.08);
+
+  /* ---- Playing cards ---------------------------------------------------- */
+  --card-w-sm: 2.75rem;   /* 44 px */
+  --card-w-md: 4.5rem;    /* 72 px */
+  --card-w-lg: 6.5rem;    /* 104 px */
+  --card-ratio: 1.4;      /* height / width */
+  --card-ink: #1c1a24;    /* spades and clubs */
+  --card-red: #b3202f;    /* hearts and diamonds — rich crimson */
+  --card-shadow: 0 1px 1px rgba(0, 0, 0, 0.35), 0 3px 8px rgba(0, 0, 0, 0.35);
+
+  /* ---- Chips ------------------------------------------------------------ */
+  --chip-sm: 1.75rem;     /* 28 px */
+  --chip-md: 2.75rem;     /* 44 px */
+  --chip-lg: 3.75rem;     /* 60 px */
+
+  /* denomination colours: body / edge inlay / numeral ink */
+  --chip-1: #e9e1cc;
+  --chip-1-inlay: #2f4c8c;
+  --chip-1-ink: #1c1a24;
+  --chip-5: #b8232f;
+  --chip-5-inlay: #f6eeda;
+  --chip-5-ink: #fff6e4;
+  --chip-25: #1f8f5f;
+  --chip-25-inlay: #f6eeda;
+  --chip-25-ink: #f4fff9;
+  --chip-100: #1d1a23;
+  --chip-100-inlay: #d4af5a;
+  --chip-100-ink: #f3dfa2;
+  --chip-500: #6a3bb0;
+  --chip-500-inlay: #f6eeda;
+  --chip-500-ink: #fbf5ff;
+  --chip-1000: #d9a531;
+  --chip-1000-inlay: #2b1a10;
+  --chip-1000-ink: #2b1a10;
+  --chip-5000: #1c4f9c;
+  --chip-5000-inlay: #e6c878;
+  --chip-5000-ink: #fbefc9;
+
+  /* ---- Player "enamel" colours (avatar index 0..11) --------------------- */
+  /* Mirrored in ui.js (AVATAR_COLORS). Chosen to stay legible on emerald felt. */
+  --avatar-0: #d43a4c;   /* rubí */
+  --avatar-1: #ee7b30;   /* naranja */
+  --avatar-2: #f0b429;   /* ámbar */
+  --avatar-3: #a8d13a;   /* lima */
+  --avatar-4: #2ec4b6;   /* turquesa */
+  --avatar-5: #4aa8f0;   /* celeste */
+  --avatar-6: #3d5fd9;   /* cobalto */
+  --avatar-7: #8a56e2;   /* violeta */
+  --avatar-8: #d44fb8;   /* fucsia */
+  --avatar-9: #f590ae;   /* rosa */
+  --avatar-10: #ece3cf;  /* marfil */
+  --avatar-11: #3b3644;  /* grafito */
+}
+
+/* Phones: slightly smaller cards and chips so hands fit a 360 px table. */
+@media (max-width: 480px) {
+  :root {
+    --card-w-sm: 2.375rem;  /* 38 px */
+    --card-w-md: 3.625rem;  /* 58 px */
+    --card-w-lg: 5rem;      /* 80 px */
+    --chip-sm: 1.5rem;      /* 24 px */
+    --chip-md: 2.5rem;      /* 40 px */
+    --chip-lg: 3.25rem;     /* 52 px */
+  }
+}
