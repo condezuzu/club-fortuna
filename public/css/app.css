@@ -472,7 +472,7 @@ button.quota__who:hover { border-color: var(--gold-400); transform: translateY(-
 .podium__row:hover { border-color: var(--gold-400); transform: translateX(2px); }
 .podium__glyph { flex: none; width: 30px; font-size: 22px; text-align: center; }
 .podium__text { flex: 1; min-width: 0; display: flex; flex-direction: column; line-height: 1.2; }
-.podium__text small { font-size: 10px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-gold); }
+.podium__text small { font-size: 10px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-gold); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .podium__text strong { font-family: var(--font-display); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .podium__value { font-family: var(--font-numeral); font-size: var(--fs-sm); color: var(--gold-200); font-variant-numeric: tabular-nums lining-nums; white-space: nowrap; }
 

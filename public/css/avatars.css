@@ -6,6 +6,12 @@
      .parade        the walking lane             (height: --parade-h, default 96px)
      .look-editor   the customisation UI
    Requires tokens.css, base.css and components.css.
+
+   The character is a paper doll inside one <svg>: the groups .av-leg,
+   .av-foot, .av-arm, .av-head ... are rotated around their joints by the
+   rules below (walk cycle, moods, things held in the hand). State lives in
+   classes of .avatar-char: is-walking, is-left, is-offline, mood-cheer,
+   mood-love, mood-hit, mood-sad.
    ========================================================================== */
 
 /* --------------------------------------------------------------------------
@@ -2256,15 +2262,22 @@
 
 /* A pet that trails behind: keep the pair centred on the stage. */
 .look-editor__stage .avatar-char[data-pet="dog"],
-.look-editor__stage .avatar-char[data-pet="cat"],
-.look-editor__stage .avatar-char[data-pet="dragon"] {
+.look-editor__stage .avatar-char[data-pet="cat"] {
   margin-left: calc(var(--av-size) * 0.2);
 }
 
+.look-editor__stage .avatar-char[data-pet="dragon"] {
+  margin-left: calc(var(--av-size) * 0.35);
+}
+
 .look-editor__stage .avatar-char.is-left[data-pet="dog"],
-.look-editor__stage .avatar-char.is-left[data-pet="cat"],
-.look-editor__stage .avatar-char.is-left[data-pet="dragon"] {
+.look-editor__stage .avatar-char.is-left[data-pet="cat"] {
   margin-right: calc(var(--av-size) * 0.2);
+  margin-left: 0;
+}
+
+.look-editor__stage .avatar-char.is-left[data-pet="dragon"] {
+  margin-right: calc(var(--av-size) * 0.35);
   margin-left: 0;
 }
 
@@ -2316,6 +2329,30 @@
 .look-editor__stage:hover .look-editor__turn {
   background-color: rgba(4, 2, 6, 0.72);
   color: var(--gold-100);
+}
+
+.look-editor__caption {
+  display: grid;
+  gap: 1px;
+  min-width: 0;
+  text-align: center;
+}
+
+.look-editor__name {
+  overflow: hidden;
+  color: var(--gold-200);
+  font-family: var(--font-display);
+  font-size: var(--fs-lg);
+  font-weight: 700;
+  line-height: var(--lh-snug);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.look-editor__sub {
+  color: var(--text-3);
+  font-size: var(--fs-2xs);
+  letter-spacing: 0.04em;
 }
 
 /* "Probátelo": the unowned item currently shown on the character. */
@@ -2796,6 +2833,12 @@
 
 .look-editor--narrow .look-editor__purse-label {
   letter-spacing: 0.08em;
+}
+
+.look-editor--narrow .look-editor__caption {
+  align-self: start;
+  padding: 2px 4px;
+  text-align: left;
 }
 
 .look-editor--narrow .look-try {

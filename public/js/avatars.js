@@ -1614,7 +1614,7 @@ export function createParade(opts = {}) {
 
   function levelOf(p) {
     const n = Math.trunc(Number(p.level));
-    return Number.isFinite(n) && n > 0 ? n : 1;
+    return Number.isFinite(n) && n > 0 ? n : 0; // personal levels start at 0, like everywhere else in the club
   }
 
   function paintWalker(w, p) {
@@ -2174,7 +2174,10 @@ export function createLookEditor(opts = {}) {
     el('div', { class: 'look-try__head' }, el('span', { class: 'look-try__label' }, 'Te estás probando'), tryStop),
     tryName, tryHint, tryBuy);
 
-  const preview = el('div', { class: 'look-editor__preview' }, purse, stage, tryBar);
+  const nameEl = el('strong', { class: 'look-editor__name' });
+  const caption = el('div', { class: 'look-editor__caption' }, nameEl, el('span', { class: 'look-editor__sub' }, 'Así te ven en la sala'));
+
+  const preview = el('div', { class: 'look-editor__preview' }, purse, stage, caption, tryBar);
 
   /* ---- pickers ----------------------------------------------------------- */
 
@@ -2226,13 +2229,15 @@ export function createLookEditor(opts = {}) {
       return button;
     });
     roving(group, buttons, (i) => cfg.set(i));
+    const hint = el('span', { class: 'look-field__hint' });
     const node = el('div', { class: 'look-field' },
-      el('div', { class: 'look-field__head' }, el('span', { class: 'look-field__label' }, cfg.label), cfg.hint ? el('span', { class: 'look-field__hint' }, cfg.hint) : null),
+      el('div', { class: 'look-field__head' }, el('span', { class: 'look-field__label' }, cfg.label), hint),
       group);
     return {
       node,
       paint() {
         const current = cfg.get();
+        hint.textContent = (typeof cfg.hint === 'function' ? cfg.hint() : cfg.hint) || '';
         buttons.forEach((button, i) => {
           const on = current === i;
           button.classList.toggle('is-active', on);
@@ -2392,7 +2397,12 @@ export function createLookEditor(opts = {}) {
             changed();
           },
         }),
-        swatches({ label: 'Pantalón', colors: PANTS, names: PANTS_NAMES, get: () => st.look.pants, set: (i) => setFree('pants', i) }),
+        swatches({
+          label: 'Pantalón', colors: PANTS, names: PANTS_NAMES,
+          hint: () => (['tracksuit', 'suit', 'tux'].includes(shown().outfit) ? 'El traje que tenés puesto trae su pantalón' : ''),
+          get: () => st.look.pants,
+          set: (i) => setFree('pants', i),
+        }),
       ]);
     }
     const tab = EDITOR_TABS.find((entry) => entry.id === id);
@@ -2457,6 +2467,9 @@ export function createLookEditor(opts = {}) {
 
     const trying = st.trying;
     tryBar.hidden = !trying;
+    caption.hidden = !!trying;
+    nameEl.textContent = st.name;
+    nameEl.hidden = !st.name;
     if (trying) {
       const missing = Math.max(0, trying.price - st.balance);
       const pending = st.pending === trying.id;

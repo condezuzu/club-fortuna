@@ -1168,7 +1168,7 @@ function openPodium() {
   add('🧂', 'El más salado', (p) => -p.net, (p) => signed(p.net), (p) => p.net < 0);
   const modal = ui.openModal({
     title: 'Podio de la sala',
-    size: 'sm',
+    size: 'md',
     content: el('div', { class: 'podium' }, ...(rows.length ? rows : [el('p', { class: 'side__empty' }, 'Todavía no hay nada que premiar. A jugar.')])),
     actions: [{ label: 'Cerrar', variant: 'ghost' }],
   });

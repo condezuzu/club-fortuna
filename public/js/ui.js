@@ -1972,8 +1972,49 @@ function ensureFx() {
   canvas.width = Math.round(w * dpr);
   canvas.height = Math.round(h * dpr);
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  fx = { wrap, ctx, w, h, particles: [], raf: 0, last: 0, figures: 0 };
+  fx = { wrap, ctx, w, h, particles: [], raf: 0, last: 0, figures: 0, figure: null, pending: [] };
   return fx;
+}
+
+const FIGURE_MS = 2650;
+const FIGURE_BUMP_MS = 312; // where the entrance of celebrate-figure reaches its overshoot
+
+/**
+ * The big "+12.500" in the middle of the screen. Only one fits: celebrate()
+ * calls this for the first headline, or for a repeat of the one on screen (two
+ * Plinko balls in a row), which adds up instead of piling a second figure on top.
+ */
+function showFigure(state, caption, amount) {
+  let figure = state.figure;
+  let stay = FIGURE_MS;
+  if (figure) {
+    clearTimeout(figure.timer);
+    figure.total += amount;
+    figure.amount.textContent = `+${formatChips(figure.total)}`;
+    // Replay the animation from its overshoot: a bump, without fading out and in again.
+    figure.node.style.animation = 'none';
+    void figure.node.offsetWidth;
+    figure.node.style.animation = '';
+    figure.node.style.animationDelay = `-${FIGURE_BUMP_MS}ms`;
+    stay -= FIGURE_BUMP_MS;
+  } else {
+    const amountEl = el('div', { class: 'celebrate__amount' }, `+${formatChips(amount)}`);
+    const node = el('div', { class: 'celebrate__figure' },
+      caption ? el('div', { class: 'celebrate__caption' }, caption) : null,
+      amountEl);
+    state.wrap.appendChild(node);
+    figure = { node, amount: amountEl, caption, total: amount, timer: 0 };
+    state.figure = figure;
+    state.figures += 1;
+  }
+  figure.timer = setTimeout(() => {
+    figure.node.remove();
+    if (fx !== state) return;
+    state.figure = null;
+    state.figures -= 1;
+    const next = state.pending.shift();
+    if (next) celebrate(next);
+  }, stay);
 }
 
 function makeParticle(x, y, vx, vy, scale, life, delay) {
@@ -2070,6 +2111,19 @@ export function celebrate(opts = {}) {
   const state = ensureFx();
   if (!state) return;
 
+  // One headline at a time. A big win that also completes the quota used to
+  // print "+3.500" and "+340" on top of each other: now the second celebration
+  // waits for its turn, burst included.
+  const amount = Number(opts.amount);
+  const headline = kind !== 'win' && Number.isFinite(amount) && amount > 0;
+  const caption = headline ? (opts.caption != null ? String(opts.caption) : conf.caption) : '';
+  if (headline && state.figure && state.figure.caption !== caption) {
+    const twin = state.pending.find((item) => item.caption === caption);
+    if (twin) twin.amount += amount;
+    else state.pending.push({ kind, caption, amount, from: opts.from });
+    return;
+  }
+
   const scale = clamp(Math.min(state.w, state.h) / 700, 0.7, 1.3);
   const origin = centerOf(opts.from) || { x: state.w / 2, y: state.h * 0.46 };
   const perBurst = Math.round(conf.count / conf.bursts);
@@ -2093,19 +2147,7 @@ export function celebrate(opts = {}) {
     ));
   }
 
-  const amount = Number(opts.amount);
-  if (kind !== 'win' && Number.isFinite(amount) && amount > 0) {
-    const caption = opts.caption != null ? String(opts.caption) : conf.caption;
-    const figure = el('div', { class: 'celebrate__figure' },
-      caption ? el('div', { class: 'celebrate__caption' }, caption) : null,
-      el('div', { class: 'celebrate__amount' }, `+${formatChips(amount)}`));
-    state.wrap.appendChild(figure);
-    state.figures += 1;
-    setTimeout(() => {
-      figure.remove();
-      if (fx === state) state.figures -= 1;
-    }, 2650);
-  }
+  if (headline) showFigure(state, caption, amount);
 
   if (!state.raf) {
     state.last = 0;
