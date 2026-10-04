@@ -19,14 +19,17 @@
   <style>
     /* Dev-page-only layout. The page code lives in /dev/mascot.dev.js (the server's
        CSP does not run inline scripts). */
+    /* the same numbers the app shell uses for its bottom bar (css/app.css) */
     :root {
-      --dev-bar-h: 3.5rem;
+      --dev-bar-h: 96px;
+      --dev-host-w: 132px;
     }
 
-    /* what the app shell does on phones */
-    @media (max-width: 480px) {
+    @media (max-width: 700px) {
       :root {
-        --mascot-h: 96px;
+        --dev-bar-h: 76px;
+        --dev-host-w: 88px;
+        --mascot-h: 108px;
       }
     }
 
@@ -135,13 +138,23 @@
       flex: 1 1 14rem;
     }
 
+    .dev__input--num {
+      width: 4.75rem;
+      padding: 0.2rem 0.4rem;
+    }
+
     .dev__log {
-      min-height: 1.4em;
+      min-height: 2.6em;
+      padding: 0.5rem 0.9rem;
+      border-left: 2px solid var(--gold-500);
+      border-radius: var(--radius-xs);
+      background: rgba(244, 237, 220, 0.04);
       color: var(--text-2);
       font-size: var(--fs-sm);
     }
 
-    /* the bottom bar, as the shell lays it out: fixed, the mascot at the left edge */
+    /* the bottom bar, laid out like the shell's .floorbar: fixed, the mascot's host
+       at the left edge and the players' avatars to his right */
     .dev-floor {
       position: fixed;
       left: 0;
@@ -150,12 +163,14 @@
       z-index: var(--z-hud);
       display: flex;
       align-items: flex-end;
-      gap: var(--space-3);
       height: var(--dev-bar-h);
-      padding: 0 var(--space-3) 0.35rem max(0.25rem, env(safe-area-inset-left));
-      border-top: 1px solid var(--hairline-strong);
-      background: linear-gradient(180deg, var(--ink-800) 0%, var(--ink-900) 100%);
-      box-shadow: 0 -10px 30px rgba(0, 0, 0, 0.45);
+      border-top: 2px solid var(--gold-500);
+      background:
+        repeating-linear-gradient(45deg, rgba(212, 175, 55, 0.07) 0 2px, transparent 2px 22px),
+        repeating-linear-gradient(-45deg, rgba(212, 175, 55, 0.07) 0 2px, transparent 2px 22px),
+        linear-gradient(180deg, #3a1420 0%, #1d0a12 100%);
+      box-shadow: 0 -10px 30px rgba(0, 0, 0, 0.55), inset 0 2px 0 rgba(255, 255, 255, 0.08);
+      pointer-events: none;
     }
 
     .dev-floor[data-bg="felt"] {
@@ -168,15 +183,20 @@
 
     .dev-floor__host {
       position: relative;
-      z-index: 2;
+      flex: none;
+      display: flex;
+      justify-content: center;
+      align-self: flex-end;
+      width: var(--dev-host-w);
+      pointer-events: auto;
     }
 
     .dev-floor__walker {
       display: grid;
       place-items: center;
-      width: 2.25rem;
-      height: 2.25rem;
-      margin-bottom: 0.1rem;
+      width: 2.5rem;
+      height: 2.5rem;
+      margin: 0 var(--space-3) 0.75rem 0;
       border: 2px solid rgba(255, 255, 255, 0.5);
       border-radius: 50%;
       color: #fffdf6;

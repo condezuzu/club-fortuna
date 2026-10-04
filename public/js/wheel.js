@@ -4,24 +4,38 @@
  *   import { createWheel } from '/js/wheel.js';
  *   const wheel = createWheel({ onTick() {}, onLand(number) {} });
  *
- * createWheel() returns an HTMLElement with class "wheel": a square sized by
- * its container (styles in /css/wheel.css) and painted on a canvas at device
- * resolution.
+ * createWheel() returns an HTMLElement with class "wheel": a square that fills
+ * its container's width (styles in /css/wheel.css), painted on a canvas at
+ * device resolution.
  *
  *   wheel.spin(number, durationMs)  animate: the ball comes to rest in pocket
- *                                   `number` exactly at durationMs. Calling it
- *                                   again restarts from the rotor's current
- *                                   pose. durationMs < 1200 behaves like
- *                                   settle(number).
+ *                                   `number` at durationMs. Calling it again
+ *                                   starts over from the rotor's current pose
+ *                                   (announcing the spin already running, same
+ *                                   number and same end time, changes nothing).
+ *                                   durationMs < 1200 behaves like settle().
  *   wheel.settle(number)            no animation: the ball at rest in that
- *                                   pocket, the pocket softly lit.
+ *                                   pocket, the pocket softly lit; the wheel
+ *                                   keeps its slow idle turn.
  *   wheel.clear()                   no ball.
  *   wheel.destroy()                 cancels every frame, timer, observer and
  *                                   listener. The element stays where it is.
  *   wheel.getState()                snapshot for tests and tooling.
  *
  *   onTick()        the ball crossed a fret. Never more often than every 45 ms.
- *   onLand(number)  once per spin(), when the ball has settled.
+ *   onLand(number)  once for every spin(), when its ball has settled: at
+ *                   durationMs, or sooner if the spin was too short to animate
+ *                   or settle(number) caught up with it. A spin replaced by
+ *                   another spin, another number or clear() never lands. It
+ *                   is never called from inside spin() or settle().
+ *
+ * State for styling: class "is-spinning" / "is-settled", data-state
+ * ("clear" | "spinning" | "settled") and, once settled, data-number and
+ * data-color ("red" | "black" | "green").
+ *
+ * Reduced motion (system setting, or the reducedMotion option): nothing turns.
+ * During a spin the ball waits on the track, and the result fades in over the
+ * last 600 ms, so it still arrives at durationMs.
  *
  * Why the landing cannot miss: planSpin() writes the whole spin as closed-form
  * functions of time, built BACKWARDS from the target. The rotor's angle is a
@@ -56,10 +70,10 @@ const colorOf = (number) => (number === 0 ? 'green' : RED_NUMBERS.has(number) ? 
 
 /** Radii of every part, outside in. */
 const G = Object.freeze({
-  band: 0.978, // outer brass band: band .. 1
-  rim: 0.905, // mahogany top: rim .. band
-  lip: 0.89, // brass lip: lip .. rim
-  trackOut: 0.878, // foot of the bowl's wall; the track runs bowl .. trackOut
+  band: 0.98, // outer brass band: band .. 1
+  rim: 0.918, // mahogany top: rim .. band
+  lip: 0.904, // brass lip: lip .. rim
+  trackOut: 0.893, // foot of the bowl's wall; the track runs bowl .. trackOut
   bowl: 0.772, // inner edge of the stationary bowl
   rotor: 0.764, // everything inside this turns
   numOut: 0.752, // number ring: numIn .. numOut
@@ -67,11 +81,11 @@ const G = Object.freeze({
   pocketOut: 0.606, // pocket ring: pocketIn .. pocketOut
   pocketIn: 0.494,
   cone: 0.482, // cone: hub .. cone
-  hub: 0.112, // turret collar
+  hub: 0.128, // turret collar
   text: 0.684, // centre line of the numerals
   deflector: 0.797,
-  ball: 0.033,
-  ballTrack: 0.845, // ball centre while it laps the track
+  ball: 0.035,
+  ballTrack: 0.858, // ball centre while it laps the track, against the wall
   ballPocket: 0.55, // ball centre at rest
 });
 
@@ -82,7 +96,6 @@ const MIN_SPIN_MS = 1200; // anything shorter is not worth animating
 const FADE_MS = 600; // reduced motion: the result fades in over this
 const TICK_MIN_MS = 45; // hard floor between two onTick calls
 const TICK_PACE = 800; // ms·rad/s: on the track, ticks thin out as the ball slows
-const LAND_GRACE_MS = 40; // the fallback timer fires this long after the end
 const SAME_SPIN_MS = 120; // a repeated spin() ending within this is the same spin
 const IDLE_FRAME_MS = 30; // the idle turn repaints at ~30 fps
 const GLOW_MS = 480;
@@ -210,9 +223,9 @@ export function planSpin(options) {
     if (t >= T) return 0;
     const last = hops - 1;
     if (t >= hitT[last]) {
-      // Into the pocket, a touch past its middle, and back: starts at the speed the last fret left it.
+      // Into the pocket, a touch past its middle (it has that much room), and back to rest.
       const s = (t - hitT[last]) / settle;
-      return -0.5 * STEP * (1 - s) * (1 - s) * Math.cos(1.5 * Math.PI * s);
+      return -0.5 * STEP * (1 - s) ** 2.6 * Math.cos(1.5 * Math.PI * s);
     }
     let i = last - 1;
     while (i > 0 && t < hitT[i]) i--;
@@ -489,8 +502,8 @@ const LAMP = [255, 244, 222];
 const FALLBACK_FACE = '"Bodoni MT", "Didot", "Bodoni 72", "Times New Roman", Times, serif';
 
 const PALETTE = {
-  wood: ['--wheel-wood', '#4b1c13'],
-  track: ['--wheel-track', '#1e0e0b'],
+  wood: ['--wheel-wood', '#5a2218'],
+  track: ['--wheel-track', '#2a130e'],
   red: ['--wheel-red', '#b3202f'],
   black: ['--wheel-black', '#17141e'],
   green: ['--wheel-green', '#178058'],
@@ -642,9 +655,13 @@ function lighting(hi, lo, lit = 0.875, focus = 1.5) {
 
 /** A soft streak of reflected lamp along a circle, centred on turn fraction `at`. */
 function sheen(ctx, radius, width, at, spread, alpha) {
-  const clear = [...LAMP, 0];
   for (const [w, a] of [[width, alpha * 0.3], [width * 0.55, alpha * 0.55], [width * 0.22, alpha]]) {
-    conicRing(ctx, radius - w / 2, radius + w / 2, [[0, clear], [at - spread, clear], [at, [...LAMP, a]], [at + spread, clear], [1, clear]]);
+    const stops = [];
+    for (let i = 0; i <= 64; i++) {
+      const away = Math.abs(i / 64 - at);
+      stops.push([i / 64, [...LAMP, a * smooth(clamp01(1 - Math.min(away, 1 - away) / spread))]]);
+    }
+    conicRing(ctx, radius - w / 2, radius + w / 2, stops);
   }
 }
 
@@ -711,52 +728,55 @@ function paintBowl(ctx, px, look) {
   circleLine(ctx, G.band, 0.004, 'rgba(0, 0, 0, 0.55)');
 
   // mahogany top, turned to a soft bullnose and lacquered
+  const crown = (G.rim + G.band) / 2;
   ring(ctx, G.rim, G.band);
   ctx.fillStyle = radial(ctx, G.rim, G.band, [
-    [0, css(shade(wood, -0.52))],
-    [0.2, css(shade(wood, -0.1))],
-    [0.55, css(warm(wood, 0.1))],
-    [0.84, css(shade(wood, -0.12))],
-    [1, css(shade(wood, -0.58))],
+    [0, css(shade(wood, -0.48))],
+    [0.18, css(shade(wood, -0.06))],
+    [0.5, css(warm(wood, 0.17))],
+    [0.82, css(shade(wood, -0.06))],
+    [1, css(shade(wood, -0.52))],
   ]);
   ctx.fill();
   ctx.save();
   ring(ctx, G.rim, G.band);
   ctx.clip();
-  grain(ctx, rand, G.rim, G.band, 180, wood);
+  grain(ctx, rand, G.rim, G.band, 210, wood, 1.3);
   ctx.restore();
-  conicRing(ctx, G.rim, G.band, lighting(0.15, 0.45));
-  sheen(ctx, (G.rim + G.band) / 2 + 0.005, 0.05, 0.875, 0.1, 0.5);
-  sheen(ctx, (G.rim + G.band) / 2 - 0.004, 0.03, 0.375, 0.07, 0.14);
+  conicRing(ctx, G.rim, G.band, lighting(0.22, 0.4));
+  sheen(ctx, crown + 0.004, 0.05, 0.875, 0.14, 0.8);
+  sheen(ctx, crown + 0.006, 0.02, 0.868, 0.05, 0.5);
+  sheen(ctx, crown - 0.003, 0.03, 0.375, 0.08, 0.2);
 
   // brass lip, then the wall that drops to the track
   conicRing(ctx, G.lip, G.rim, brass(gold));
   circleLine(ctx, G.rim, 0.0035, 'rgba(0, 0, 0, 0.55)');
   ring(ctx, G.trackOut, G.lip);
-  ctx.fillStyle = radial(ctx, G.trackOut, G.lip, [[0, css(shade(track, -0.6))], [1, css(shade(wood, -0.66))]]);
+  ctx.fillStyle = radial(ctx, G.trackOut, G.lip, [[0, css(shade(track, -0.62))], [1, css(shade(wood, -0.66))]]);
   ctx.fill();
 
   // the track: a polished dish, darkest in the corner under the wall
   ring(ctx, G.bowl, G.trackOut);
   ctx.fillStyle = radial(ctx, G.bowl, G.trackOut, [
-    [0, css(shade(track, -0.3))],
-    [0.2, css(track)],
-    [0.62, css(warm(track, 0.13))],
-    [0.86, css(shade(track, -0.05))],
-    [1, css(shade(track, -0.62))],
+    [0, css(shade(track, -0.38))],
+    [0.14, css(shade(track, -0.06))],
+    [0.5, css(warm(track, 0.09))],
+    [0.72, css(warm(track, 0.16))], // the groove the ball runs in
+    [0.9, css(shade(track, -0.16))],
+    [1, css(shade(track, -0.66))],
   ]);
   ctx.fill();
   ctx.save();
   ring(ctx, G.bowl, G.trackOut);
   ctx.clip();
-  grain(ctx, rand, G.bowl, G.trackOut, 90, warm(track, 0.2), 0.8);
+  grain(ctx, rand, G.bowl, G.trackOut, 130, warm(track, 0.25), 1.1);
   ctx.restore();
-  conicRing(ctx, G.bowl, G.lip, lighting(0.1, 0.42, 0.375)); // a dish is lit on the side away from the lamp
-  sheen(ctx, G.ballTrack - 0.004, 0.05, 0.375, 0.09, 0.16);
+  conicRing(ctx, G.bowl, G.lip, lighting(0.12, 0.42, 0.375)); // a dish is lit on the side away from the lamp
+  sheen(ctx, G.ballTrack - 0.006, 0.06, 0.375, 0.1, 0.2);
 
   for (let i = 0; i < 8; i++) paintDeflector(ctx, px, gold, (i + 0.5) * (TAU / 8), i % 2 === 0);
 
-  insetShadow(ctx, px, G.lip, 0.034, 0.05, 0.62);
+  insetShadow(ctx, px, G.lip, 0.036, 0.05, 0.62);
 
   // the well the rotor sits in
   disc(ctx, G.bowl);
@@ -766,8 +786,8 @@ function paintBowl(ctx, px, look) {
 
 /** One brass deflector: a four-facet lozenge, each facet shaded by how it faces the lamp. */
 function paintDeflector(ctx, px, gold, angle, upright) {
-  const a = upright ? 0.0085 : 0.024; // half extent across the track
-  const b = upright ? 0.022 : 0.0085; // half extent along the radius
+  const a = upright ? 0.0105 : 0.03; // half extent along the track
+  const b = upright ? 0.024 : 0.0105; // half extent along the radius
   const points = [[0, -b], [a, 0], [0, b], [-a, 0]];
   const outline = () => {
     ctx.beginPath();
@@ -810,7 +830,7 @@ function paintDeflector(ctx, px, gold, angle, upright) {
   ctx.restore();
 }
 
-function paintRotor(sprite, look, face) {
+function paintRotor(sprite, look, face, small) {
   const { ctx, scale: px } = sprite;
   const { gold } = look;
   const rand = mulberry32(0x70707);
@@ -857,14 +877,15 @@ function paintRotor(sprite, look, face) {
   }
 
   // numerals: upright at 12 o'clock, feet towards the centre
-  const size = 0.094 * px;
+  // (`small` is 0 on a wheel 300 px wide or more and 1 at 160 px: small wheels get slightly larger figures)
+  const size = (0.1 + 0.012 * small) * px;
   ctx.save();
   ctx.font = `${look.weight} ${size}px ${face}`;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'alphabetic';
   let widest = 0;
   for (const number of WHEEL_NUMBERS) widest = Math.max(widest, ctx.measureText(String(number)).width);
-  const fit = clamp((STEP * G.text * px * 0.74) / (widest || 1), 0.7, 1);
+  const fit = clamp((STEP * G.text * px * (0.76 + 0.08 * small)) / (widest || 1), 0.68, 1); // tall, slightly condensed, as on a real wheel
   const rise = ctx.measureText('0').actualBoundingBoxAscent || size * 0.7;
   ctx.fillStyle = css(look.numeral);
   ctx.shadowColor = 'rgba(0, 0, 0, 0.6)';
@@ -929,8 +950,8 @@ function paintLight(ctx, px, look) {
   circleLine(ctx, G.cone, 0.003, edge);
 
   // the cone rises to the turret: lit towards the lamp, with a streak of glare down its flank
-  conicRing(ctx, G.hub, G.cone, lighting(0.26, 0.52, 0.875, 2));
-  conicRing(ctx, G.hub, G.cone, [[0, clear], [0.83, clear], [0.875, [...LAMP, 0.26]], [0.92, clear], [1, clear]]);
+  conicRing(ctx, G.hub, G.cone, lighting(0.3, 0.55, 0.875, 2));
+  conicRing(ctx, G.hub, G.cone, [[0, clear], [0.82, clear], [0.875, [...LAMP, 0.32]], [0.93, clear], [1, clear]]);
   conicRing(ctx, 0.343, 0.352, brass(gold)); // inlaid brass line
   circleLine(ctx, 0.3545, 0.003, 'rgba(0, 0, 0, 0.35)');
 
@@ -939,23 +960,26 @@ function paintLight(ctx, px, look) {
   disc(ctx, G.cone);
   ctx.clip();
   disc(ctx, 0.6);
-  ctx.fillStyle = radial(ctx, G.hub * 0.7, G.hub * 2.5, [[0, 'rgba(0, 0, 0, 0.6)'], [1, 'rgba(0, 0, 0, 0)']], 0.032, 0.038);
+  ctx.fillStyle = radial(ctx, G.hub * 0.75, G.hub * 2.3, [[0, 'rgba(0, 0, 0, 0.62)'], [1, 'rgba(0, 0, 0, 0)']], 0.036, 0.044);
   ctx.fill();
   ctx.restore();
   conicRing(ctx, 0, G.hub, brass(gold));
   circleLine(ctx, G.hub, 0.004, 'rgba(0, 0, 0, 0.6)');
-  circleLine(ctx, G.hub * 0.86, 0.003, 'rgba(0, 0, 0, 0.28)');
+  circleLine(ctx, G.hub * 0.84, 0.003, 'rgba(0, 0, 0, 0.3)');
 
   // the lamp's glare over the lacquer, and the fall-off away from it
   disc(ctx, 1);
-  ctx.fillStyle = radial(ctx, 0, 0.95, [[0, css(LAMP, 0.15)], [0.5, css(LAMP, 0.05)], [1, css(LAMP, 0)]], -0.4, -0.48);
+  ctx.fillStyle = radial(ctx, 0, 0.95, [[0, css(LAMP, 0.2)], [0.5, css(LAMP, 0.06)], [1, css(LAMP, 0)]], -0.4, -0.48);
   ctx.fill();
   disc(ctx, 1);
   ctx.fillStyle = radial(ctx, 0.6, 1.5, [[0, 'rgba(0, 0, 0, 0)'], [1, 'rgba(0, 0, 0, 0.44)']], -0.25, -0.3);
   ctx.fill();
 }
 
-const ARM = { from: 0.05, to: 0.268, wide: 0.0175, slim: 0.0115, knob: 0.03, knobAt: 0.29 };
+const ARM = { from: 0.06, to: 0.272, wide: 0.021, slim: 0.0135, knob: 0.034, knobAt: 0.298 };
+
+/** Reduced motion: where the ball waits, in play but still, until the result fades in. */
+const WAITING = Object.freeze({ angle: 0, radius: G.ballTrack, lift: 0 });
 
 function handlePath(ctx) {
   ctx.beginPath();
@@ -972,7 +996,7 @@ function handlePath(ctx) {
   }
 }
 
-function paintHandle(ctx, px, look) {
+function paintHandle(ctx, look) {
   const { gold } = look;
   for (let i = 0; i < 4; i++) {
     ctx.save();
@@ -1015,23 +1039,23 @@ function paintCap(ctx, px, look) {
     ctx.fillStyle = g;
     ctx.fill();
   };
-  castShadow(ctx, px, 0.02, 0.7, () => {
+  castShadow(ctx, px, 0.022, 0.7, () => {
     ctx.beginPath();
-    ctx.arc(0.008, 0.01, 0.07, 0, TAU);
+    ctx.arc(0.009, 0.012, 0.086, 0, TAU);
     ctx.fill();
   });
-  conicRing(ctx, 0, 0.072, brass(gold)); // shoulder
-  circleLine(ctx, 0.072, 0.0035, 'rgba(0, 0, 0, 0.6)');
-  ball(0.058, -0.42, -0.46); // dome
-  circleLine(ctx, 0.058, 0.003, 'rgba(0, 0, 0, 0.45)');
-  circleLine(ctx, 0.04, 0.0025, 'rgba(0, 0, 0, 0.25)');
-  castShadow(ctx, px, 0.01, 0.6, () => {
+  conicRing(ctx, 0, 0.088, brass(gold)); // shoulder
+  circleLine(ctx, 0.088, 0.0035, 'rgba(0, 0, 0, 0.6)');
+  ball(0.07, -0.42, -0.46); // dome
+  circleLine(ctx, 0.07, 0.003, 'rgba(0, 0, 0, 0.45)');
+  circleLine(ctx, 0.049, 0.0025, 'rgba(0, 0, 0, 0.25)');
+  castShadow(ctx, px, 0.012, 0.6, () => {
     ctx.beginPath();
-    ctx.arc(0.005, 0.006, 0.023, 0, TAU);
+    ctx.arc(0.006, 0.007, 0.027, 0, TAU);
     ctx.fill();
   });
-  ball(0.023, -0.4, -0.44); // finial
-  circleLine(ctx, 0.023, 0.002, 'rgba(0, 0, 0, 0.4)');
+  ball(0.027, -0.4, -0.44); // finial
+  circleLine(ctx, 0.027, 0.002, 'rgba(0, 0, 0, 0.4)');
 }
 
 /** Ivory ball of `radius` pixels, centred on the origin. */
@@ -1041,9 +1065,9 @@ function paintBall(ctx, radius, look) {
   ctx.arc(0, 0, radius, 0, TAU);
   const body = ctx.createRadialGradient(-0.36 * radius, -0.4 * radius, radius * 0.05, -0.1 * radius, -0.12 * radius, radius * 1.12);
   body.addColorStop(0, '#ffffff');
-  body.addColorStop(0.3, css(ivory));
-  body.addColorStop(0.64, css(mix(ivory, [178, 160, 126], 0.6)));
-  body.addColorStop(1, css(mix(ivory, [66, 52, 40], 0.9)));
+  body.addColorStop(0.34, css(ivory));
+  body.addColorStop(0.7, css(mix(ivory, [198, 182, 150], 0.6)));
+  body.addColorStop(1, css(mix(ivory, [112, 96, 76], 0.88)));
   ctx.fillStyle = body;
   ctx.fill();
   ctx.save();
@@ -1075,8 +1099,8 @@ function paintGlow(ctx, px, look) {
   ctx.fillStyle = '#000';
   ctx.fill();
   ctx.restore();
-  pocket();
-  ctx.fillStyle = radial(ctx, G.pocketIn, G.numOut, [[0, css(c, 0.5)], [0.42, css(c, 0.3)], [1, css(c, 0.2)]]);
+  pocket(); // a wash light enough to leave the pocket's own colour readable
+  ctx.fillStyle = radial(ctx, G.pocketIn, G.numOut, [[0, css(c, 0.34)], [0.42, css(c, 0.17)], [1, css(c, 0.1)]]);
   ctx.fill();
   pocket();
   ctx.lineJoin = 'round';
@@ -1098,9 +1122,10 @@ function makeSprite(width, height, scale, ox, oy, canvas) {
 /**
  * Paint every sprite for a wheel `unit` device pixels in radius.
  * `density` (>= 1) oversamples the sprites that get rotated, so the numerals
- * stay sharp at any angle on ordinary screens too.
+ * stay sharp at any angle on ordinary screens too. `small` (0..1) says how
+ * close the wheel is to its smallest size.
  */
-function buildSprites(unit, density, look, ink) {
+function buildSprites(unit, density, look, ink, small) {
   const side = Math.round(unit * 2 + 1);
   const half = side / 2;
   const fine = unit * density;
@@ -1115,13 +1140,13 @@ function buildSprites(unit, density, look, ink) {
   // The rotor is painted on a canvas that lives in the document, so the page's font features reach its numerals.
   const rotor = centred(G.rotor, fine, ink);
   const face = chooseFace(rotor.ctx, look.family, look.weight);
-  paintRotor(rotor, look, face);
+  paintRotor(rotor, look, face, small);
 
   const light = makeSprite(side, side, unit, half, half);
   paintLight(light.ctx, unit, look);
 
   const handle = centred(ARM.knobAt + ARM.knob, fine);
-  paintHandle(handle.ctx, fine, look);
+  paintHandle(handle.ctx, look);
   const handleShadow = centred(ARM.knobAt + ARM.knob + 0.06, unit);
   castShadow(handleShadow.ctx, unit, 0.022, 0.62, () => {
     handlePath(handleShadow.ctx);
@@ -1135,9 +1160,9 @@ function buildSprites(unit, density, look, ink) {
   const ball = centred(G.ball, fine);
   ball.ctx.setTransform(1, 0, 0, 1, ball.ox, ball.oy);
   paintBall(ball.ctx, ballRadius, look);
-  const ballShadow = centred(G.ball * 1.7, unit);
-  disc(ballShadow.ctx, G.ball * 1.7);
-  ballShadow.ctx.fillStyle = radial(ballShadow.ctx, 0, G.ball * 1.7, [[0, 'rgba(0, 0, 0, 0.62)'], [0.45, 'rgba(0, 0, 0, 0.4)'], [1, 'rgba(0, 0, 0, 0)']]);
+  const ballShadow = centred(G.ball * 1.9, unit);
+  disc(ballShadow.ctx, G.ball * 1.9);
+  ballShadow.ctx.fillStyle = radial(ballShadow.ctx, 0, G.ball * 1.9, [[0, 'rgba(0, 0, 0, 0.7)'], [0.5, 'rgba(0, 0, 0, 0.42)'], [1, 'rgba(0, 0, 0, 0)']]);
   ballShadow.ctx.fill();
 
   const glow = makeSprite(0.44 * unit, 0.5 * unit, unit, 0.22 * unit, 0.87 * unit);
@@ -1193,7 +1218,7 @@ export function createWheel(options = {}) {
   let run = null; // the spin in progress: { number, index, start, end, plan, tick }
   let resting = null; // the ball at rest: { number, index }
   let ghost = null; // the previous ball, fading out: { index | pose, at }
-  let glow = { index: -1, from: 0, to: 0, at: 0 };
+  let glow = { index: -1, from: 0, to: 0, at: 0, calm: true };
   const scratch = {};
 
   /* ---- time-based state --------------------------------------------------- */
@@ -1240,9 +1265,10 @@ export function createWheel(options = {}) {
     return glow.from + (glow.to - glow.from) * (1 - (1 - p) * (1 - p));
   }
 
+  /** Light a pocket (level 1) or let the light die (level 0). `instant` skips the fade and the lively pulse of a landing. */
   function setGlow(index, level, time, instant) {
     const from = instant ? level : index === glow.index || level === 0 ? glowAt(time) : 0;
-    glow = { index: level > 0 ? index : glow.index, from, to: level, at: time };
+    glow = { index: level > 0 ? index : glow.index, from, to: level, at: time, calm: instant };
   }
 
   const fading = (time) => (ghost !== null && time - ghost.at < GHOST_MS) || (glow.from !== glow.to && time - glow.at < GLOW_MS);
@@ -1266,7 +1292,7 @@ export function createWheel(options = {}) {
     const x = centre + pose.radius * unit * Math.sin(pose.angle);
     const y = centre - pose.radius * unit * Math.cos(pose.angle);
     if (withShadow) {
-      const reach = (0.011 + 0.03 * pose.lift) * unit;
+      const reach = (0.015 + 0.032 * pose.lift) * unit;
       blit(sprites.ballShadow, x + reach * 0.8, y + reach, 0, alpha * (0.95 - 0.35 * pose.lift), 1 + 0.25 * pose.lift);
     }
     blit(sprites.ball, x, y, 0, alpha, 1 + 0.09 * pose.lift);
@@ -1289,7 +1315,10 @@ export function createWheel(options = {}) {
     const level = glowAt(time);
     const lit = run && !run.plan ? run.index : glow.index;
     if (level > 0.004 && lit >= 0) {
-      const breath = reduced || glow.to === 0 ? 1 : 0.86 + 0.14 * Math.cos((time - glow.at) / 520);
+      // It breathes: deeply right after a landing, then less and less, down to a faint shimmer.
+      const age = time - glow.at;
+      const depth = reduced || glow.to === 0 ? 0 : glow.calm ? 0.05 : 0.05 + 0.23 * Math.exp(-age / 5000);
+      const breath = 1 - depth * (0.5 - 0.5 * Math.cos(age / 520));
       ctx.globalCompositeOperation = 'lighter';
       blit(sprites.glow, centre, centre, wheel + lit * STEP, clamp01(level * breath));
       ctx.globalCompositeOperation = 'source-over';
@@ -1316,6 +1345,10 @@ export function createWheel(options = {}) {
       else drawBall(ghost.pose || { angle: wheel + ghost.index * STEP, radius: G.ballPocket, lift: 0 }, centre, left, true);
     }
     const ball = ballAt(time, wheel);
+    if (run && !run.plan) {
+      const waiting = clamp01((time - run.start) / BALL_IN_MS) * (1 - (ball ? ball.alpha : 0));
+      if (waiting > 0) drawBall(WAITING, centre, waiting, true);
+    }
     if (ball && ball.alpha > 0) {
       const alpha = ball.alpha;
       if (ball.moving) {
@@ -1323,7 +1356,7 @@ export function createWheel(options = {}) {
         const t = time - run.start;
         const tail = run.plan.ballAt(t - 16, {});
         const smear = Math.hypot(tail.radius * Math.sin(tail.angle) - ball.radius * Math.sin(ball.angle), tail.radius * Math.cos(tail.angle) - ball.radius * Math.cos(ball.angle)) * unit;
-        if (smear > 2) for (let i = 5; i >= 1; i--) drawBall(run.plan.ballAt(t - i * 3.2, tail), centre, alpha * (0.44 - 0.075 * i), false);
+        if (smear > 2) for (let i = 8; i >= 1; i--) drawBall(run.plan.ballAt(t - i * 2, tail), centre, alpha * (0.3 - 0.033 * i), false);
       }
       drawBall(ball, centre, alpha, true);
     }
@@ -1339,7 +1372,7 @@ export function createWheel(options = {}) {
     const look = readStyle(root, ink.getContext('2d'));
     const dpr = cssSize > 0 ? pixels / cssSize : 1;
     const density = dpr >= 2.5 ? 1 : dpr >= 1.75 ? 1.5 : 2;
-    sprites = buildSprites(unit, Math.max(1, Math.min(density, 1500 / (2 * G.rotor * unit))), look, ink);
+    sprites = buildSprites(unit, Math.max(1, Math.min(density, 1500 / (2 * G.rotor * unit))), look, ink, clamp01((300 - cssSize) / 140));
     signature = faceSignature(ink.getContext('2d'), look);
     paint(now());
     if (!fontsAsked && document.fonts && typeof document.fonts.load === 'function') {
@@ -1357,29 +1390,31 @@ export function createWheel(options = {}) {
     cssSize = cssPixels;
     const next = Math.min(MAX_PIXELS, Math.max(0, Math.round(devicePixels)));
     if (cssPixels > 0) root.style.setProperty('--wheel-size', `${Math.round(cssPixels * 100) / 100}px`);
-    if (next === pixels) return;
-    pixels = next;
-    if (pixels < 8 || !ctx) return;
-    canvas.width = pixels;
-    canvas.height = pixels;
-    ctx.imageSmoothingEnabled = true;
-    ctx.imageSmoothingQuality = 'high';
-    unit = pixels / 2 - 0.5;
-    clearTimeout(paintTimer);
-    if (!sprites) {
-      repaintSprites();
-    } else if (sprites.unit !== unit) {
-      paint(now()); // stretch the old sprites for now, repaint them once the size settles
-      paintTimer = setTimeout(repaintSprites, 120);
-    } else {
-      paint(now());
+    if (next !== pixels) {
+      pixels = next;
+      if (pixels < 8 || !ctx) return;
+      canvas.width = pixels;
+      canvas.height = pixels;
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = 'high';
+      unit = pixels / 2 - 0.5;
+      clearTimeout(paintTimer);
+      if (!sprites) {
+        repaintSprites();
+      } else if (sprites.unit !== unit) {
+        paint(now()); // stretch the old sprites for now, repaint them once the size settles
+        paintTimer = setTimeout(repaintSprites, 120);
+      } else {
+        paint(now());
+      }
     }
     kick();
   }
 
+  /** Window resize or zoom, for engines whose resize observer cannot report device pixels. */
   function measure() {
     if (destroyed || exactPixels) return;
-    const side = Math.min(root.clientWidth, root.clientHeight);
+    const side = cssSize > 0 ? cssSize : Math.min(root.clientWidth, root.clientHeight);
     resize(side * (window.devicePixelRatio || 1), side);
   }
 
@@ -1397,9 +1432,9 @@ export function createWheel(options = {}) {
     const time = now();
     if (run) {
       if (run.plan && run.tick(time - run.start) && onTick) call(onTick);
-      if (time >= run.end) finish();
+      if (run && time >= run.end) finish(); // (the listener may have ended the spin itself)
     }
-    const busy = (run && (run.plan || time >= run.end - FADE_MS)) || fading(time);
+    const busy = (run && (run.plan || time - run.start < BALL_IN_MS + 40 || time >= run.end - FADE_MS)) || fading(time);
     if (inView && (busy || time - lastPaint >= IDLE_FRAME_MS - 2)) paint(time);
     if (!raf && (busy || (inView && !reduced))) raf = requestAnimationFrame(frame); // a listener may already have asked for one
   }
@@ -1444,9 +1479,8 @@ export function createWheel(options = {}) {
   /** Let whatever ball is showing fade out where it is. */
   function dismissBall(time) {
     const ball = ballAt(time, rotorAt(time));
-    if (!ball || ball.alpha <= 0) ghost = null;
-    else if (run) ghost = { pose: { angle: ball.angle, radius: ball.radius, lift: ball.lift }, at: time };
-    else ghost = { index: resting.index, at: time };
+    if (ball && ball.alpha > 0.5) ghost = run ? { pose: { angle: ball.angle, radius: ball.radius, lift: ball.lift }, at: time } : { index: resting.index, at: time };
+    else ghost = run && !run.plan ? { pose: WAITING, at: time } : null;
   }
 
   function rest(number, index, time, instant) {
@@ -1482,7 +1516,7 @@ export function createWheel(options = {}) {
     } else {
       wakeTimer = setTimeout(kick, Math.max(0, duration - FADE_MS)); // nothing moves until the result fades in
     }
-    landTimer = setTimeout(finish, duration + LAND_GRACE_MS); // frames normally get there first; this covers hidden tabs
+    landTimer = setTimeout(finish, duration); // whichever comes first, this or a frame: hidden tabs get no frames
     mark('spinning');
     refresh();
   }
@@ -1541,7 +1575,7 @@ export function createWheel(options = {}) {
   }
 
   function clear() {
-    if (destroyed) return;
+    if (destroyed || (!run && !resting)) return;
     const time = now();
     holdRotor(time);
     dismissBall(time);
@@ -1562,13 +1596,7 @@ export function createWheel(options = {}) {
     clearTimeout(paintTimer);
     if (resizer) resizer.disconnect();
     if (viewer) viewer.disconnect();
-    document.removeEventListener('visibilitychange', onVisibility);
-    window.removeEventListener('resize', measure);
-    if (motionQuery) {
-      if (motionQuery.removeEventListener) motionQuery.removeEventListener('change', onMotionChange);
-      else if (motionQuery.removeListener) motionQuery.removeListener(onMotionChange);
-    }
-    if (document.fonts && document.fonts.removeEventListener) document.fonts.removeEventListener('loadingdone', onFonts);
+    listen(false);
     run = null;
     resting = null;
     ghost = null;
@@ -1637,6 +1665,27 @@ export function createWheel(options = {}) {
     paintTimer = setTimeout(repaintSprites, 0);
   }
 
+  const motionQuery = typeof window.matchMedia === 'function' ? window.matchMedia('(prefers-reduced-motion: reduce)') : null;
+  let listening = false;
+
+  /**
+   * Page-wide listeners are only held while the wheel is on the page: a wheel that is dropped
+   * without destroy() (it stops being rendered, the resize observer says so) leaves nothing behind.
+   */
+  function listen(on) {
+    if (on === listening) return;
+    listening = on;
+    const verb = on ? 'addEventListener' : 'removeEventListener';
+    document[verb]('visibilitychange', onVisibility);
+    window[verb]('resize', measure); // zoom and screen changes where the observer cannot see device pixels
+    if (motionQuery && motionQuery[verb]) motionQuery[verb]('change', onMotionChange);
+    if (document.fonts && document.fonts[verb]) document.fonts[verb]('loadingdone', onFonts);
+    if (on) {
+      onMotionChange(); // catch up with whatever changed while it was away
+      onFonts();
+    }
+  }
+
   let resizer = null;
   if (typeof ResizeObserver === 'function') {
     resizer = new ResizeObserver((entries) => {
@@ -1645,12 +1694,15 @@ export function createWheel(options = {}) {
       const exact = entry.devicePixelContentBoxSize && entry.devicePixelContentBoxSize[0];
       exactPixels = Boolean(exact);
       resize(exact ? Math.min(exact.inlineSize, exact.blockSize) : css * (window.devicePixelRatio || 1), css);
+      listen(pixels >= 8 && root.isConnected);
     });
     try {
       resizer.observe(root, { box: 'device-pixel-content-box' });
     } catch {
       resizer.observe(root);
     }
+  } else {
+    listen(true); // no observer: sized on window resize only, and released only by destroy()
   }
 
   let viewer = null;
@@ -1664,17 +1716,6 @@ export function createWheel(options = {}) {
     );
     viewer.observe(root);
   }
-
-  document.addEventListener('visibilitychange', onVisibility);
-  window.addEventListener('resize', measure); // zoom and screen changes where the observer cannot see device pixels
-
-  const motionQuery = typeof window.matchMedia === 'function' ? window.matchMedia('(prefers-reduced-motion: reduce)') : null;
-  if (motionQuery) {
-    if (motionQuery.addEventListener) motionQuery.addEventListener('change', onMotionChange);
-    else if (motionQuery.addListener) motionQuery.addListener(onMotionChange);
-  }
-
-  if (document.fonts && document.fonts.addEventListener) document.fonts.addEventListener('loadingdone', onFonts);
 
   mark('clear');
   root.spin = spin;

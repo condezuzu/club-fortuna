@@ -42,16 +42,20 @@ const VIP_EMOTES = Object.freeze(['👑', '🤑', '🐋', '🥱', '🎻', '🧂'
 const EMOTE_COOLDOWN_MS = 700;
 
 /** Avatar look. Free parts are indexes; paid parts are keys of COSMETICS ('none' when empty). */
-const LOOK_FREE = Object.freeze({ skin: 6, hair: 6, hairColor: 8, pants: 6 });
-const LOOK_SLOTS = Object.freeze(['hat', 'glasses', 'neck', 'pet', 'aura']);
+const LOOK_FREE = Object.freeze({ skin: 6, hair: 10, hairColor: 8, pants: 6, eyes: 6, face: 5 });
+const LOOK_SLOTS = Object.freeze(['hat', 'glasses', 'neck', 'outfit', 'hand', 'pet', 'aura']);
 const LOOK_DEFAULT = Object.freeze({
   skin: 0,
   hair: 0,
   hairColor: 0,
   pants: 0,
+  eyes: 0,
+  face: 0,
   hat: 'none',
   glasses: 'none',
   neck: 'none',
+  outfit: 'none',
+  hand: 'none',
   pet: 'none',
   aura: 'none',
 });
@@ -59,7 +63,11 @@ const LOOK_DEFAULT = Object.freeze({
 function cosmetic(slot, key, name, price) {
   return Object.freeze({ id: `${slot}:${key}`, slot, key, name, price });
 }
-const COSMETICS = Object.freeze([
+// Outfits, hand items and the dragon go on sale together with the client that can draw them.
+const NEW_LOOKS_READY = false;
+const NEW_SLOTS = ['outfit', 'hand'];
+const COSMETICS = Object.freeze(
+  [
   cosmetic('hat', 'party', 'Bonete', 300),
   cosmetic('hat', 'cap', 'Gorra', 400),
   cosmetic('hat', 'visor', 'Visera de crupier', 800),
@@ -73,13 +81,24 @@ const COSMETICS = Object.freeze([
   cosmetic('neck', 'bowtie', 'Moño', 500),
   cosmetic('neck', 'scarf', 'Bufanda', 700),
   cosmetic('neck', 'chain', 'Cadena de oro', 6000),
+  cosmetic('outfit', 'hoodie', 'Buzo con capucha', 800),
+  cosmetic('outfit', 'tracksuit', 'Conjunto deportivo', 1200),
+  cosmetic('outfit', 'suit', 'Traje', 3000),
+  cosmetic('outfit', 'tux', 'Esmoquin', 8000),
+  cosmetic('outfit', 'cape', 'Capa real', 40000),
+  cosmetic('hand', 'drink', 'Trago', 900),
+  cosmetic('hand', 'cards', 'Mazo de cartas', 1500),
+  cosmetic('hand', 'cane', 'Bastón', 2500),
+  cosmetic('hand', 'moneybag', 'Bolsa de plata', 20000),
   cosmetic('pet', 'dog', 'Perrito', 6000),
   cosmetic('pet', 'cat', 'Gato negro', 6000),
   cosmetic('pet', 'parrot', 'Loro', 15000),
+  cosmetic('pet', 'dragon', 'Dragoncito', 60000),
   cosmetic('aura', 'sparkle', 'Brillos', 10000),
   cosmetic('aura', 'fire', 'En llamas', 25000),
   cosmetic('aura', 'gold', 'Aura dorada', 100000),
-]);
+].filter((item) => NEW_LOOKS_READY || !(NEW_SLOTS.includes(item.slot) || item.id === 'pet:dragon'))
+);
 
 /** Felt colour of your own tables. The first one is free and always owned. */
 const DEFAULT_THEME = 'theme:emerald';

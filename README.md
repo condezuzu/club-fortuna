@@ -11,6 +11,7 @@ Casino web cooperativo y multijugador con fichas ficticias. Armás una sala, inv
 - **Tragamonedas** con pozo progresivo compartido por el equipo
 - **Baccarat** (Punto, Banca, Empate)
 - **Póker de 3 cartas** contra el crupier
+- **Plinko:** soltás bolitas que rebotan entre clavos hasta un premio; elegís 8, 12 o 16 filas y el riesgo, y todos ven caer las de todos
 
 Cada juego tiene además su mesa **High Limit**, con apuestas mucho más altas, para quien tenga 10.000 fichas o más en la mano.
 

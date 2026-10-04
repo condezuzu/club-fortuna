@@ -9,9 +9,10 @@ import blackjack from './games/blackjack.js';
 import slots from './games/slots.js';
 import baccarat from './games/baccarat.js';
 import poker3 from './games/poker3.js';
+import plinko from './games/plinko.js';
 
 const { el, clear, formatChips, toast, createButton } = ui;
-const MODULES = { roulette, blackjack, slots, baccarat, poker3 };
+const MODULES = { roulette, blackjack, slots, baccarat, poker3, plinko };
 const DEFAULT_CHIPS = [5, 25, 100, 500];
 const THROW_GLYPH = { tomato: '🍅', rose: '🌹', cake: '🎂', water: '💦' };
 const app = document.getElementById('app');

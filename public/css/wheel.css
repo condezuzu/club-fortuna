@@ -1,16 +1,23 @@
 /* ==========================================================================
    Club Fortuna — roulette wheel (js/wheel.js)
    --------------------------------------------------------------------------
-   The wheel is a square that fills its container's width (160 px to 520 px
-   is the comfortable range). wheel.js paints it on a canvas and reads the
-   colours and the numeral face declared here. Requires tokens.css.
+   The wheel is a square that fills its container's width: give the container
+   a width (160 px to 520 px is the comfortable range). wheel.js paints it on
+   a canvas and reads the colours and the numeral face declared here.
+   Requires tokens.css.
+
+   State hooks set by wheel.js on the element:
+     .is-spinning / .is-settled
+     [data-state="clear" | "spinning" | "settled"]
+     [data-number="17"] [data-color="red" | "black" | "green"]   (when settled)
    ========================================================================== */
 
 .wheel {
   /* What wheel.js paints with. Any CSS colour works; the brass is the
-     --gold-50 .. --gold-900 ramp from tokens.css. */
-  --wheel-wood: #4b1c13;                          /* mahogany: bowl and cone */
-  --wheel-track: #1e0e0b;                         /* ball track */
+     --gold-50 .. --gold-900 ramp from tokens.css. Read when the wheel is
+     (re)sized, so set them before it is shown. */
+  --wheel-wood: #5a2218;                          /* mahogany: bowl and cone */
+  --wheel-track: #2a130e;                         /* ball track */
   --wheel-red: var(--card-red, #b3202f);
   --wheel-black: #17141e;
   --wheel-green: #178058;

@@ -243,17 +243,21 @@ test('shop: titles, cosmetics and themes are bought once, equipped, and never to
 test('look: free parts are validated, paid parts must be owned', () => {
   const [, ana] = roomWith(['Ana']);
   const base = { ...economy.LOOK_DEFAULT };
-  ana.send({ t: 'look', look: { ...base, skin: 3, hair: 5, hairColor: 7, pants: 2 }, avatar: 4 });
+  ana.send({ t: 'look', look: { ...base, skin: 3, hair: 9, hairColor: 7, pants: 2, eyes: 5, face: 4 }, avatar: 4 });
   assert.equal(ana.me().look.skin, 3);
+  assert.equal(ana.me().look.face, 4);
+  ana.send({ t: 'look', look: { skin: 3, hair: 1, hairColor: 0, pants: 0 } });
+  assert.equal(ana.error(), undefined, 'a look without the newer parts is accepted with their defaults');
+  assert.deepEqual([ana.me().look.eyes, ana.me().look.outfit, ana.me().look.hair], [0, 'none', 1]);
   assert.equal(ana.me().avatar, 4);
   ana.send({ t: 'look', look: { ...base, hat: 'tophat' } });
   assert.equal(ana.error().code, 'not_owned');
-  for (const bad of [null, [], { ...base, skin: 6 }, { ...base, hair: -1 }, { ...base, pants: 1.5 }, { ...base, hat: 'ghost' }, { ...base, pet: 7 }]) {
+  for (const bad of [null, [], { ...base, skin: 6 }, { ...base, hair: -1 }, { ...base, hair: 10 }, { ...base, pants: 1.5 }, { ...base, eyes: 6 }, { ...base, hat: 'ghost' }, { ...base, outfit: 'tux' }, { ...base, pet: 7 }]) {
     ana.clear();
     ana.send({ t: 'look', look: bad });
     assert.ok(ana.error(), `refused: ${JSON.stringify(bad)}`);
   }
-  assert.equal(ana.me().look.skin, 3, 'a refused look changes nothing');
+  assert.equal(ana.me().look.hair, 1, 'a refused look changes nothing');
 });
 
 test('in debt there is no shopping', () => {
@@ -343,7 +347,7 @@ test('high-limit tables: same games, bigger limits, and you need the chips to si
   const ana = club.client({ name: 'Ana' });
   const games = ana.last('welcome').games;
   const high = games.filter((meta) => meta.tier === 'high');
-  assert.deepEqual(high.map((meta) => meta.base).sort(), ['baccarat', 'blackjack', 'poker3', 'roulette', 'slots']);
+  assert.deepEqual(high.map((meta) => meta.base).sort(), ['baccarat', 'blackjack', 'plinko', 'poker3', 'roulette', 'slots']);
   for (const meta of high) {
     const base = games.find((other) => other.id === meta.base);
     assert.ok(meta.minBet > base.minBet && meta.maxBet > base.maxBet);

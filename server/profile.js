@@ -63,7 +63,7 @@ function sanitizeLook(raw, owned) {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) throw new ClubError('Ese avatar no es válido.', 'bad_look');
   const look = {};
   for (const [part, count] of Object.entries(economy.LOOK_FREE)) {
-    const value = raw[part];
+    const value = raw[part] === undefined ? economy.LOOK_DEFAULT[part] : raw[part];
     if (!Number.isInteger(value) || value < 0 || value >= count) throw new ClubError('Ese avatar no es válido.', 'bad_look');
     look[part] = value;
   }
